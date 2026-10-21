@@ -1,9 +1,10 @@
-name: Build Mega Hack Mobile
+name: Build Mega Soft Android
 
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
+  push:
+    branches: ["**"]
+  pull_request:
 
 permissions:
   contents: read
@@ -12,19 +13,18 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - Android32
-          - Android64
+        include:
+          - target: Android64
+            artifact: MegaSoft-Android64
+          - target: Android32
+            artifact: MegaSoft-Android32
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Build Geode mod
         id: build
@@ -34,10 +34,10 @@ jobs:
           target: ${{ matrix.target }}
           build-config: Release
 
-      - name: Upload mod
+      - name: Upload compiled .geode package
         uses: actions/upload-artifact@v4
         with:
-          name: MegaHack-Mobile-${{ matrix.target }}
-          path: ${{ steps.build.outputs.build-output }}
+          name: ${{ matrix.artifact }}
+          path: ${{ steps.build.outputs.build-output }}/*.geode
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
