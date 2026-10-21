@@ -8,5 +8,37 @@
     "name": "Mega Soft",
     "version": "v1.0.0",
     "developer": "mfkr0001",
-    "description": "Mega Soft tools for Geometry Dash"
+    "description": "Mega Soft tools for Geometry Dash",
+    "settings": {
+        "show-fps": {
+            "type": "bool",
+            "name": "Show FPS",
+            "description": "Display engine statistics",
+            "default": false
+        },
+        "noclip": {
+            "type": "bool",
+            "name": "Noclip",
+            "description": "Skip the normal player death handler",
+            "default": false
+        },
+        "speed-hack": {
+            "type": "bool",
+            "name": "Speed Hack",
+            "description": "Enable experimental gameplay speed scaling",
+            "default": false
+        },
+        "speed-multiplier": {
+            "type": "float",
+            "name": "Speed multiplier",
+            "description": "Experimental update-time multiplier",
+            "default": 1.5,
+            "min": 0.5,
+            "max": 3.0,
+            "control": {
+                "slider": true,
+                "slider-step": 0.1
+            }
+        }
+    }
 }
