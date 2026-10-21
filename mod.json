@@ -5,10 +5,10 @@
     "win": "2.2081"
   },
   "id": "dev.chatgpt.gdtools",
-  "name": "Mega Soft",
-  "version": "v0.5.0",
-  "developer": "Mega Soft",
-  "description": "Compact in-game menu with NoClip, adjustable Speedhack, Music toggle and GD Bot macro recording/playback.",
+  "name": "MegaSoft Pulse",
+  "version": "v0.6.0",
+  "developer": "MegaSoft Pulse",
+  "description": "MegaSoft Pulse: NoClip, adjustable Speedhack, music mute and speed sync, and GD Bot macro recording/playback.",
   "tags": [
     "gameplay",
     "offline",
@@ -18,9 +18,10 @@
   "settings": {
     "noclip-enabled": {
       "name": "NoClip",
-      "description": "Toggle NoClip from the Mega Soft menu.",
+      "description": "Toggle NoClip from the MegaSoft Pulse menu.",
       "type": "bool",
       "default": false
     }
   }
 }
+
