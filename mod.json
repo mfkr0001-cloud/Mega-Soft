@@ -1,10 +1,14 @@
 {
-    "geode": "5.11.2",
-    "version": "1.0.0",
+    "geode": "v5.11.2",
+    "gd": {
+        "android": "2.2081",
+        "win": "2.2081"
+    },
     "id": "dev.chatgpt.gdtools",
     "name": "Mega Soft",
+    "version": "v1.0.0",
     "developer": "Mega Soft",
-    "description": "Mega Hack-style tools for Geometry Dash Android.",
+    "description": "Mega Soft tools for Geometry Dash",
     "repository": "",
     "tags": [
         "gameplay",
