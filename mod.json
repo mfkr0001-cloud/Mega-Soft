@@ -1,28 +1,14 @@
-
 {
-  "geode": "v5.0.0",
-  "gd": {
-    "android": "2.208",
-    "win": "2.208"
-  },
-  "id": "dev.chatgpt.gdtools",
-  "name": "Mega Soft",
-  "version": "v0.3.1",
-  "developer": "Local Project",
-  "description": "Mega Soft menu with NoClip, adjustable speedhack and GD Bot.",
-  "tags": [
-    "gameplay",
-    "offline",
-    "utility",
-    "cheat"
-  ],
-  "settings": {
-    "noclip-enabled": {
-      "name": "NoClip",
-      "description": "Enable or disable the basic no-death feature.",
-      "type": "bool",
-      "default": false
-    }
-  }
+    "geode": "5.11.2",
+    "version": "1.0.0",
+    "id": "dev.chatgpt.gdtools",
+    "name": "Mega Soft",
+    "developer": "Mega Soft",
+    "description": "Mega Hack-style tools for Geometry Dash Android.",
+    "repository": "",
+    "tags": [
+        "gameplay",
+        "enhancement"
+    ],
+    "settings": {}
 }
-
