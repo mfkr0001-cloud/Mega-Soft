@@ -1,41 +1,8 @@
 
 #include <Geode/Geode.hpp>
-#include <Geode/loader/SettingV3.hpp>
 #include <Geode/modify/MenuLayer.hpp>
-#include <Geode/modify/PlayLayer.hpp>
-
-#include <algorithm>
 
 using namespace geode::prelude;
-
-namespace MegaSoft {
-
-    static void applyFPS(bool enabled) {
-        auto director = CCDirector::sharedDirector();
-
-        if (director) {
-            director->setDisplayStats(enabled);
-        }
-
-        log::info(
-            "MegaSoft: FPS statistics {}",
-            enabled ? "ON" : "OFF"
-        );
-    }
-
-    $on_mod(Loaded) {
-        applyFPS(
-            Mod::get()->getSettingValue<bool>("show-fps")
-        );
-
-        listenForSettingChanges(
-            "show-fps",
-            [](bool enabled) {
-                applyFPS(enabled);
-            }
-        );
-    }
-}
 
 class $modify(MegaSoftMenuLayer, MenuLayer) {
     bool init() {
@@ -43,100 +10,61 @@ class $modify(MegaSoftMenuLayer, MenuLayer) {
             return false;
         }
 
-        auto size = CCDirector::sharedDirector()->getWinSize();
+        auto winSize = CCDirector::sharedDirector()->getWinSize();
 
-        auto label = CCLabelBMFont::create(
-            "MH", "bigFont.fnt"
-        );
-
-        if (!label) {
+        auto menu = CCMenu::create();
+        if (!menu) {
             return true;
         }
 
-        label->setScale(0.65f);
+        menu->setPosition({0.0f, 0.0f});
+        menu->setID("megasoft-main-menu");
+        addChild(menu, 1000);
+
+        auto buttonSprite = ButtonSprite::create(
+            "MH",
+            40,
+            true,
+            "goldFont.fnt",
+            "GJ_button_01.png",
+            30.0f,
+            0.8f
+        );
+
+        if (!buttonSprite) {
+            log::error("Mega Soft: failed to create button sprite");
+            return true;
+        }
 
         auto button = CCMenuItemSpriteExtra::create(
-            label,
+            buttonSprite,
             this,
-            menu_selector(MegaSoftMenuLayer::onMegaSoft)
+            menu_selector(MegaSoftMenuLayer::onMegaSoftClick)
         );
 
         if (!button) {
+            log::error("Mega Soft: failed to create menu button");
             return true;
         }
 
-        auto menu = CCMenu::create();
+        button->setID("megasoft-open-button");
+        button->setPosition({
+            winSize.width - 35.0f,
+            winSize.height - 35.0f
+        });
+
         menu->addChild(button);
 
-        menu->setPosition(
-            ccp(size.width - 38.f, size.height * 0.65f)
-        );
-
-        this->addChild(menu, 1000);
-
+        log::info("Mega Soft: main menu button created");
         return true;
     }
 
-    void onMegaSoft(CCObject*) {
-        bool fps = Mod::get()->getSettingValue<bool>(
-            "show-fps"
-        );
-
-        bool noclip = Mod::get()->getSettingValue<bool>(
-            "noclip"
-        );
-
-        bool speed = Mod::get()->getSettingValue<bool>(
-            "speed-hack"
-        );
-
-        double multiplier =
-            Mod::get()->getSettingValue<double>(
-                "speed-multiplier"
-            );
-
+    void onMegaSoftClick(CCObject*) {
         FLAlertLayer::create(
             "Mega Soft",
-            fmt::format(
-                "FPS statistics: {}\n"
-                "Noclip: {}\n"
-                "Speed Hack: {}\n"
-                "Speed multiplier: {:.1f}x\n\n"
-                "Change options in Geode mod settings.",
-                fps ? "ON" : "OFF",
-                noclip ? "ON" : "OFF",
-                speed ? "ON" : "OFF",
-                multiplier
-            ),
-            "Close"
+            "Mega Soft is working!\n\n"
+            "The menu button is connected correctly.",
+            "OK"
         )->show();
-    }
-};
-
-class $modify(MegaSoftPlayLayer, PlayLayer) {
-    void destroyPlayer(
-        PlayerObject* player,
-        GameObject* object
-    ) {
-        if (Mod::get()->getSettingValue<bool>("noclip")) {
-            return;
-        }
-
-        PlayLayer::destroyPlayer(player, object);
-    }
-
-    void update(float dt) {
-        if (Mod::get()->getSettingValue<bool>("speed-hack")) {
-            double multiplier =
-                Mod::get()->getSettingValue<double>(
-                    "speed-multiplier"
-                );
-
-            multiplier = std::clamp(multiplier, 0.5, 3.0);
-
-            dt *= static_cast<float>(multiplier);
-        }
-
-        PlayLayer::update(dt);
     }
 };
