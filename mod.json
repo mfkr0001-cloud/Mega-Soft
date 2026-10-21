@@ -1,5 +1,5 @@
 {
-    "geode": "v5.11.2",
+    "geode": "v5.11.0",
     "gd": {
         "android": "2.2081",
         "win": "2.2081"
@@ -8,7 +8,7 @@
     "name": "Mega Soft",
     "version": "v1.0.0",
     "developer": "Mega Soft",
-    "description": "Mega Soft tools for Geometry Dash",
+    "description": "Mega Soft tools for Geometry Dash Android",
     "repository": "",
     "tags": [
         "gameplay",
