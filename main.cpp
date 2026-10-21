@@ -1,126 +1,49 @@
 
 #include <Geode/Geode.hpp>
+#include <Geode/loader/SettingV3.hpp>
+#include <Geode/modify/MenuLayer.hpp>
+#include <Geode/modify/PlayLayer.hpp>
+
+#include <algorithm>
 
 using namespace geode::prelude;
 
-static bool g_menuOpen = false;
-static bool g_noclip = false;
-static bool g_jumpHack = false;
-static bool g_autoClicker = false;
-static bool g_showHitboxes = false;
+namespace MegaSoft {
 
-class MegaSoftPopup : public FLAlertLayer {
-protected:
-    bool init() {
-        if (!FLAlertLayer::init(
-            360.f, 260.f, 0.8f,
-            "MegaSoft", "Close", nullptr
-        )) {
-            return false;
+    static void applyFPS(bool enabled) {
+        auto director = CCDirector::sharedDirector();
+
+        if (director) {
+            director->setDisplayStats(enabled);
         }
 
-        auto winSize = CCDirector::sharedDirector()->getWinSize();
-
-        auto title = CCLabelBMFont::create(
-            "MEGASOFT MENU", "bigFont.fnt"
+        log::info(
+            "MegaSoft: FPS statistics {}",
+            enabled ? "ON" : "OFF"
         );
-        title->setScale(0.65f);
-        title->setPosition(
-            ccp(winSize.width / 2.f, winSize.height / 2.f + 75.f)
-        );
-        this->addChild(title);
-
-        auto menu = CCMenu::create();
-        menu->setPosition(CCPointZero);
-        this->addChild(menu);
-
-        addToggle(menu, "Noclip", g_noclip, 0);
-        addToggle(menu, "Jump Hack", g_jumpHack, 1);
-        addToggle(menu, "Auto Clicker", g_autoClicker, 2);
-        addToggle(menu, "Hitboxes", g_showHitboxes, 3);
-
-        return true;
     }
 
-    void addToggle(CCMenu* menu, const char* name, bool& state, int row) {
-        auto label = CCLabelBMFont::create(name, "bigFont.fnt");
-        label->setScale(0.45f);
-
-        auto item = CCMenuItemToggler::createWithStandardSprites(
-            this,
-            menu_selector(MegaSoftPopup::onToggle),
-            0.7f
+    $on_mod(Loaded) {
+        applyFPS(
+            Mod::get()->getSettingValue<bool>("show-fps")
         );
 
-        if (!item) {
-            return;
-        }
-
-        item->setTag(row);
-        item->toggle(!state);
-
-        auto entry = CCMenuItemSpriteExtra::create(
-            label, this,
-            menu_selector(MegaSoftPopup::onLabel)
+        listenForSettingChanges(
+            "show-fps",
+            [](bool enabled) {
+                applyFPS(enabled);
+            }
         );
-        entry->setTag(row);
-
-        auto y = 48.f - row * 32.f;
-
-        item->setPosition(ccp(-55.f, y));
-        entry->setPosition(ccp(35.f, y));
-
-        menu->addChild(item);
-        menu->addChild(entry);
     }
+}
 
-    void onToggle(CCObject* sender) {
-        auto item = static_cast<CCMenuItemToggler*>(sender);
-
-        switch (item->getTag()) {
-            case 0: g_noclip = item->isToggled(); break;
-            case 1: g_jumpHack = item->isToggled(); break;
-            case 2: g_autoClicker = item->isToggled(); break;
-            case 3: g_showHitboxes = item->isToggled(); break;
-        }
-    }
-
-    void onLabel(CCObject* sender) {
-        auto item = static_cast<CCMenuItem*>(sender);
-        auto menu = static_cast<CCMenu*>(item->getParent());
-
-        if (!menu) return;
-
-        auto toggler = static_cast<CCMenuItemToggler*>(
-            menu->getChildByTag(item->getTag())
-        );
-
-        if (toggler) {
-            toggler->activate();
-        }
-    }
-
-public:
-    static MegaSoftPopup* create() {
-        auto ret = new MegaSoftPopup();
-
-        if (ret && ret->init()) {
-            ret->autorelease();
-            return ret;
-        }
-
-        CC_SAFE_DELETE(ret);
-        return nullptr;
-    }
-};
-
-class $modify(MegaHackMenuLayer, MenuLayer) {
+class $modify(MegaSoftMenuLayer, MenuLayer) {
     bool init() {
         if (!MenuLayer::init()) {
             return false;
         }
 
-        auto winSize = CCDirector::sharedDirector()->getWinSize();
+        auto size = CCDirector::sharedDirector()->getWinSize();
 
         auto label = CCLabelBMFont::create(
             "MH", "bigFont.fnt"
@@ -130,31 +53,90 @@ class $modify(MegaHackMenuLayer, MenuLayer) {
             return true;
         }
 
+        label->setScale(0.65f);
+
         auto button = CCMenuItemSpriteExtra::create(
             label,
             this,
-            menu_selector(MegaHackMenuLayer::onMHButton)
+            menu_selector(MegaSoftMenuLayer::onMegaSoft)
         );
+
+        if (!button) {
+            return true;
+        }
 
         auto menu = CCMenu::create();
         menu->addChild(button);
 
         menu->setPosition(
-            ccp(winSize.width - 35.f, winSize.height * 0.65f)
+            ccp(size.width - 38.f, size.height * 0.65f)
         );
 
-        button->setScale(0.65f);
         this->addChild(menu, 1000);
 
         return true;
     }
 
-    void onMHButton(CCObject*) {
-        auto popup = MegaSoftPopup::create();
+    void onMegaSoft(CCObject*) {
+        bool fps = Mod::get()->getSettingValue<bool>(
+            "show-fps"
+        );
 
-        if (popup) {
-            popup->show();
-        }
+        bool noclip = Mod::get()->getSettingValue<bool>(
+            "noclip"
+        );
+
+        bool speed = Mod::get()->getSettingValue<bool>(
+            "speed-hack"
+        );
+
+        double multiplier =
+            Mod::get()->getSettingValue<double>(
+                "speed-multiplier"
+            );
+
+        FLAlertLayer::create(
+            "Mega Soft",
+            fmt::format(
+                "FPS statistics: {}\n"
+                "Noclip: {}\n"
+                "Speed Hack: {}\n"
+                "Speed multiplier: {:.1f}x\n\n"
+                "Change options in Geode mod settings.",
+                fps ? "ON" : "OFF",
+                noclip ? "ON" : "OFF",
+                speed ? "ON" : "OFF",
+                multiplier
+            ),
+            "Close"
+        )->show();
     }
 };
 
+class $modify(MegaSoftPlayLayer, PlayLayer) {
+    void destroyPlayer(
+        PlayerObject* player,
+        GameObject* object
+    ) {
+        if (Mod::get()->getSettingValue<bool>("noclip")) {
+            return;
+        }
+
+        PlayLayer::destroyPlayer(player, object);
+    }
+
+    void update(float dt) {
+        if (Mod::get()->getSettingValue<bool>("speed-hack")) {
+            double multiplier =
+                Mod::get()->getSettingValue<double>(
+                    "speed-multiplier"
+                );
+
+            multiplier = std::clamp(multiplier, 0.5, 3.0);
+
+            dt *= static_cast<float>(multiplier);
+        }
+
+        PlayLayer::update(dt);
+    }
+};
