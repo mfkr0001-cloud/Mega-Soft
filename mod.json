@@ -1,0 +1,12 @@
+
+{
+    "geode": "$GEODE_VERSION",
+    "gd": {
+        "android": "*"
+    },
+    "id": "mfkr0001.megasoft",
+    "name": "Mega Soft",
+    "version": "v1.0.0",
+    "developer": "mfkr0001",
+    "description": "Mega Soft tools for Geometry Dash"
+}
