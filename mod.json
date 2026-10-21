@@ -1,6 +1,6 @@
 
 {
-    "geode": "$GEODE_VERSION",
+    "geode": "5.11.2",
     "gd": {
         "android": "*"
     },
