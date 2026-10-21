@@ -1,44 +1,28 @@
 
 {
-    "geode": "5.11.2",
-    "gd": {
-        "android": "*"
-    },
-    "id": "mfkr0001.megasoft",
-    "name": "Mega Soft",
-    "version": "v1.0.0",
-    "developer": "mfkr0001",
-    "description": "Mega Soft tools for Geometry Dash",
-    "settings": {
-        "show-fps": {
-            "type": "bool",
-            "name": "Show FPS",
-            "description": "Display engine statistics",
-            "default": false
-        },
-        "noclip": {
-            "type": "bool",
-            "name": "Noclip",
-            "description": "Skip the normal player death handler",
-            "default": false
-        },
-        "speed-hack": {
-            "type": "bool",
-            "name": "Speed Hack",
-            "description": "Enable experimental gameplay speed scaling",
-            "default": false
-        },
-        "speed-multiplier": {
-            "type": "float",
-            "name": "Speed multiplier",
-            "description": "Experimental update-time multiplier",
-            "default": 1.5,
-            "min": 0.5,
-            "max": 3.0,
-            "control": {
-                "slider": true,
-                "slider-step": 0.1
-            }
-        }
+  "geode": "v5.0.0",
+  "gd": {
+    "android": "2.208",
+    "win": "2.208"
+  },
+  "id": "dev.chatgpt.gdtools",
+  "name": "Mega Soft",
+  "version": "v0.3.1",
+  "developer": "Local Project",
+  "description": "Mega Soft menu with NoClip, adjustable speedhack and GD Bot.",
+  "tags": [
+    "gameplay",
+    "offline",
+    "utility",
+    "cheat"
+  ],
+  "settings": {
+    "noclip-enabled": {
+      "name": "NoClip",
+      "description": "Enable or disable the basic no-death feature.",
+      "type": "bool",
+      "default": false
     }
+  }
 }
+
