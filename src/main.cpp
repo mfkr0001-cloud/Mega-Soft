@@ -18,7 +18,7 @@
 using namespace geode::prelude;
 
 namespace {
-    constexpr int kMegaSoftButtonTag = 0x4D534831;
+    constexpr int kMegaSoftPulseButtonTag = 0x4D534831;
     constexpr std::size_t kMaxMacroEvents = 500000;
 
     enum class BotMode { Idle, Recording, Playing };
@@ -73,6 +73,33 @@ namespace {
         return Mod::get()->getSavedValue<bool>("music-muted", false);
     }
 
+    bool musicSpeedSyncEnabled() {
+        return Mod::get()->getSavedValue<bool>("music-speed-sync", true);
+    }
+
+    void applyMusicPitch() {
+        auto* audio = FMODAudioEngine::sharedEngine();
+        if (!audio) return;
+
+        // Music speed is independent from the mute toggle. Use the active
+        // Geometry Dash music channel and restore normal pitch when sync is off.
+        float pitch = 1.0f;
+        if (PlayLayer::get() && speedhackEnabled() && musicSpeedSyncEnabled()) {
+            pitch = speedMultiplier();
+        }
+
+        const int musicChannel = audio->getMusicChannelID(0);
+        if (musicChannel >= 0) {
+            audio->setChannelPitch(musicChannel, AudioTargetType::Music, pitch);
+        }
+    }
+
+    void setMusicSpeedSyncEnabled(bool enabled) {
+        Mod::get()->setSavedValue("music-speed-sync", enabled);
+        applyMusicPitch();
+        notify(std::string("MegaSoft Pulse: music speed sync ") + (enabled ? "ON" : "OFF"));
+    }
+
     void applyMusicMute() {
         auto* audio = FMODAudioEngine::sharedEngine();
         if (!audio) return;
@@ -86,7 +113,7 @@ namespace {
     void setMusicMuted(bool muted) {
         Mod::get()->setSavedValue("music-muted", muted);
         applyMusicMute();
-        notify(muted ? "Mega Soft: Music OFF" : "Mega Soft: Music ON");
+        notify(muted ? "MegaSoft Pulse: Music OFF" : "MegaSoft Pulse: Music ON");
     }
 
     void applySpeedhack() {
@@ -95,6 +122,7 @@ namespace {
         if (scheduler) {
             scheduler->setTimeScale((PlayLayer::get() && speedhackEnabled()) ? speedMultiplier() : 1.0f);
         }
+        applyMusicPitch();
     }
 
     std::string speedLabel() {
@@ -116,6 +144,15 @@ namespace {
         return Mod::get()->getSaveDir() / "gdbot.gdm";
     }
 
+    void injectBotInput(PlayLayer* layer, int button, bool down) {
+        if (!layer || !layer->m_player1 || button < 0 || button > 32) return;
+        // Route playback through the same game input dispatcher as real/touch input.
+        // The hook checks g_injectedInput to keep these events out of the recorder.
+        g_injectedInput = true;
+        layer->handleButton(down, button, true);
+        g_injectedInput = false;
+    }
+
     void releasePlaybackButtons() {
         auto* layer = PlayLayer::get();
         if (!layer || !layer->m_player1) {
@@ -123,11 +160,9 @@ namespace {
             return;
         }
 
-        g_injectedInput = true;
         for (const int value : g_playbackHeldButtons) {
-            layer->m_player1->releaseButton(static_cast<PlayerButton>(value));
+            injectBotInput(layer, value, false);
         }
-        g_injectedInput = false;
         g_playbackHeldButtons.clear();
     }
 
@@ -245,22 +280,18 @@ namespace {
     void processPlayback(PlayLayer* layer) {
         if (g_botMode != BotMode::Playing || !layer || !layer->m_player1) return;
 
-        auto* player = layer->m_player1;
         while (g_playIndex < g_events.size() && g_events[g_playIndex].time <= g_botClock) {
             const auto event = g_events[g_playIndex++];
-            const auto button = static_cast<PlayerButton>(event.button);
 
-            g_injectedInput = true;
             if (event.pressed) {
-                player->pushButton(button);
+                injectBotInput(layer, event.button, true);
                 if (std::find(g_playbackHeldButtons.begin(), g_playbackHeldButtons.end(), event.button) == g_playbackHeldButtons.end()) {
                     g_playbackHeldButtons.push_back(event.button);
                 }
             } else {
-                player->releaseButton(button);
+                injectBotInput(layer, event.button, false);
                 std::erase(g_playbackHeldButtons, event.button);
             }
-            g_injectedInput = false;
         }
 
         if (g_playIndex >= g_events.size()) {
@@ -273,42 +304,45 @@ namespace {
     void toggleNoClip() {
         const bool enabled = !noclipEnabled();
         setNoclipEnabled(enabled);
-        log::info("Mega Soft: NoClip {}", enabled ? "ON" : "OFF");
-        notify(enabled ? "Mega Soft: NoClip ON" : "Mega Soft: NoClip OFF");
+        log::info("MegaSoft Pulse: NoClip {}", enabled ? "ON" : "OFF");
+        notify(enabled ? "MegaSoft Pulse: NoClip ON" : "MegaSoft Pulse: NoClip OFF");
     }
 
     void toggleSpeedhack() {
         const bool enabled = !speedhackEnabled();
         setSpeedhackEnabled(enabled);
         applySpeedhack();
-        log::info("Mega Soft: Speedhack {} at {}x", enabled ? "ON" : "OFF", speedMultiplier());
-        notify(enabled ? "Mega Soft: Speedhack ON" : "Mega Soft: Speedhack OFF");
+        log::info("MegaSoft Pulse: Speedhack {} at {}x", enabled ? "ON" : "OFF", speedMultiplier());
+        notify(enabled ? "MegaSoft Pulse: Speedhack ON" : "MegaSoft Pulse: Speedhack OFF");
     }
 }
 
-class MegaSoftPopup : public Popup {
+class MegaSoftPulsePopup : public Popup {
 private:
     ButtonSprite* m_noClipSprite = nullptr;
     ButtonSprite* m_speedhackSprite = nullptr;
     ButtonSprite* m_musicSprite = nullptr;
+    ButtonSprite* m_musicSyncSprite = nullptr;
     ButtonSprite* m_speedValueSprite = nullptr;
 
 protected:
     bool init() {
         // Compact grid; button labels are deliberately short so they stay inside
         // the popup on narrow Android screens as well as on desktop.
-        if (!Popup::init(340.f, 320.f)) return false;
-        setTitle("Mega Soft");
+        if (!Popup::init(360.f, 390.f)) return false;
+        setTitle("MegaSoft Pulse");
 
         auto* menu = CCMenu::create();
-        if (!menu) return false;
+        if (!menu || !m_mainLayer) return false;
         menu->setPosition({0.f, 0.f});
-        addChild(menu);
+        // Popup's frame and content live in m_mainLayer. Parenting the menu to
+        // the outer Popup shifts buttons away from the visible square.
+        m_mainLayer->addChild(menu);
 
-        const auto size = getContentSize();
+        const auto size = m_mainLayer->getContentSize();
         auto addButton = [&](const std::string& text, SEL_MenuHandler selector,
                              float x, float y, const char* frame) -> ButtonSprite* {
-            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, 0.36f);
+            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, 0.32f);
             if (!sprite) return nullptr;
             auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
             if (!item) return nullptr;
@@ -317,48 +351,52 @@ protected:
             return sprite;
         };
 
-        const float left = size.width * 0.25f;
+        const float left = size.width * 0.29f;
         const float center = size.width * 0.50f;
-        const float right = size.width * 0.75f;
-        const float rowToggles = size.height - 62.f;
-        const float rowSpeed = size.height - 108.f;
-        const float rowBot1 = size.height - 158.f;
-        const float rowBot2 = size.height - 204.f;
-        const float rowBot3 = size.height - 250.f;
+        const float right = size.width * 0.71f;
+        const float rowToggles = size.height - 72.f;
+        const float rowMusic = size.height - 118.f;
+        const float rowSpeed = size.height - 164.f;
+        const float rowBot1 = size.height - 210.f;
+        const float rowBot2 = size.height - 255.f;
+        const float rowBot3 = size.height - 300.f;
 
         m_noClipSprite = addButton(noclipEnabled() ? "NOCLIP ON" : "NOCLIP OFF",
-            menu_selector(MegaSoftPopup::onToggleNoClip), left, rowToggles,
+            menu_selector(MegaSoftPulsePopup::onToggleNoClip), left, rowToggles,
             noclipEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_speedhackSprite = addButton(speedhackEnabled() ? "SPEED ON" : "SPEED OFF",
-            menu_selector(MegaSoftPopup::onToggleSpeedhack), center, rowToggles,
+            menu_selector(MegaSoftPulsePopup::onToggleSpeedhack), right, rowToggles,
             speedhackEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_musicSprite = addButton(musicMuted() ? "MUSIC OFF" : "MUSIC ON",
-            menu_selector(MegaSoftPopup::onToggleMusic), right, rowToggles,
+            menu_selector(MegaSoftPulsePopup::onToggleMusic), left, rowMusic,
             musicMuted() ? "GJ_button_04.png" : "GJ_button_02.png");
+        m_musicSyncSprite = addButton(musicSpeedSyncEnabled() ? "MUSIC SPD ON" : "MUSIC SPD OFF",
+            menu_selector(MegaSoftPulsePopup::onToggleMusicSync), right, rowMusic,
+            musicSpeedSyncEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
 
-        addButton("-0.1x", menu_selector(MegaSoftPopup::onSpeedDown), left, rowSpeed, "GJ_button_01.png");
-        m_speedValueSprite = addButton(speedLabel(), menu_selector(MegaSoftPopup::onSpeedLabel), center, rowSpeed, "GJ_button_02.png");
-        addButton("+0.1x", menu_selector(MegaSoftPopup::onSpeedUp), right, rowSpeed, "GJ_button_01.png");
+        addButton("-0.1x", menu_selector(MegaSoftPulsePopup::onSpeedDown), left, rowSpeed, "GJ_button_01.png");
+        m_speedValueSprite = addButton(speedLabel(), menu_selector(MegaSoftPulsePopup::onSpeedLabel), center, rowSpeed, "GJ_button_02.png");
+        addButton("+0.1x", menu_selector(MegaSoftPulsePopup::onSpeedUp), right, rowSpeed, "GJ_button_01.png");
 
-        addButton("BOT REC", menu_selector(MegaSoftPopup::onRecord), left, rowBot1, "GJ_button_01.png");
-        addButton("BOT STOP", menu_selector(MegaSoftPopup::onStopBot), right, rowBot1, "GJ_button_04.png");
-        addButton("BOT PLAY", menu_selector(MegaSoftPopup::onPlay), left, rowBot2, "GJ_button_01.png");
-        addButton("BOT SAVE", menu_selector(MegaSoftPopup::onSave), right, rowBot2, "GJ_button_02.png");
-        addButton("BOT LOAD", menu_selector(MegaSoftPopup::onLoad), left, rowBot3, "GJ_button_02.png");
-        addButton("BOT STATUS", menu_selector(MegaSoftPopup::onBotStatus), right, rowBot3, "GJ_button_01.png");
+        addButton("BOT REC", menu_selector(MegaSoftPulsePopup::onRecord), left, rowBot1, "GJ_button_01.png");
+        addButton("BOT STOP", menu_selector(MegaSoftPulsePopup::onStopBot), right, rowBot1, "GJ_button_04.png");
+        addButton("BOT PLAY", menu_selector(MegaSoftPulsePopup::onPlay), left, rowBot2, "GJ_button_01.png");
+        addButton("BOT SAVE", menu_selector(MegaSoftPulsePopup::onSave), right, rowBot2, "GJ_button_02.png");
+        addButton("BOT LOAD", menu_selector(MegaSoftPulsePopup::onLoad), left, rowBot3, "GJ_button_02.png");
+        addButton("BOT STATUS", menu_selector(MegaSoftPulsePopup::onBotStatus), right, rowBot3, "GJ_button_01.png");
 
-        auto* note = CCLabelBMFont::create("Enter a level first | Record > Save > Load > Play", "chatFont.fnt");
+        auto* note = CCLabelBMFont::create("RECORD > SAVE > LOAD > PLAY", "chatFont.fnt");
         if (note) {
-            note->setScale(0.28f);
-            note->setPosition({size.width * 0.5f, 23.f});
-            addChild(note);
+            note->setScale(0.32f);
+            note->setPosition({size.width * 0.5f, 25.f});
+            m_mainLayer->addChild(note);
         }
         return true;
     }
 
 public:
-    static MegaSoftPopup* create() {
-        auto* popup = new MegaSoftPopup();
+    static MegaSoftPulsePopup* create() {
+        auto* popup = new MegaSoftPulsePopup();
         if (popup && popup->init()) {
             popup->autorelease();
             return popup;
@@ -382,6 +420,13 @@ public:
         if (m_musicSprite) m_musicSprite->setString(musicMuted() ? "MUSIC OFF" : "MUSIC ON");
     }
 
+    void onToggleMusicSync(CCObject*) {
+        setMusicSpeedSyncEnabled(!musicSpeedSyncEnabled());
+        if (m_musicSyncSprite) {
+            m_musicSyncSprite->setString(musicSpeedSyncEnabled() ? "MUSIC SPD ON" : "MUSIC SPD OFF");
+        }
+    }
+
     void onSpeedLabel(CCObject*) {
         notify("Tap -0.1x or +0.1x to set speed");
     }
@@ -390,14 +435,14 @@ public:
         setSpeedMultiplier(speedMultiplier() - 0.1f);
         if (speedhackEnabled()) applySpeedhack();
         if (m_speedValueSprite) m_speedValueSprite->setString(speedLabel().c_str());
-        notify("Mega Soft: speed set to " + speedLabel().substr(6));
+        notify("MegaSoft Pulse: speed set to " + speedLabel().substr(6));
     }
 
     void onSpeedUp(CCObject*) {
         setSpeedMultiplier(speedMultiplier() + 0.1f);
         if (speedhackEnabled()) applySpeedhack();
         if (m_speedValueSprite) m_speedValueSprite->setString(speedLabel().c_str());
-        notify("Mega Soft: speed set to " + speedLabel().substr(6));
+        notify("MegaSoft Pulse: speed set to " + speedLabel().substr(6));
     }
 
     void onRecord(CCObject*) {
@@ -462,10 +507,10 @@ public:
     }
 };
 
-class MegaSoftOpenDelegate : public CCNode {
+class MegaSoftPulseOpenDelegate : public CCNode {
 public:
-    static MegaSoftOpenDelegate* create() {
-        auto* node = new MegaSoftOpenDelegate();
+    static MegaSoftPulseOpenDelegate* create() {
+        auto* node = new MegaSoftPulseOpenDelegate();
         if (node && node->init()) {
             node->autorelease();
             return node;
@@ -475,26 +520,26 @@ public:
     }
 
     void onOpen(CCObject*) {
-        if (auto* popup = MegaSoftPopup::create()) popup->show();
+        if (auto* popup = MegaSoftPulsePopup::create()) popup->show();
     }
 };
 
 namespace {
-    void attachMegaSoftButton(CCScene* scene) {
-        if (!scene || scene->getChildByTag(kMegaSoftButtonTag)) return;
+    void attachMegaSoftPulseButton(CCScene* scene) {
+        if (!scene || scene->getChildByTag(kMegaSoftPulseButtonTag)) return;
 
         auto* menu = CCMenu::create();
-        auto* delegate = MegaSoftOpenDelegate::create();
-        auto* sprite = ButtonSprite::create("MH", "bigFont.fnt", "GJ_button_01.png", 0.75f);
+        auto* delegate = MegaSoftPulseOpenDelegate::create();
+        auto* sprite = ButtonSprite::create("MSP", "bigFont.fnt", "GJ_button_01.png", 0.75f);
         if (!menu || !delegate || !sprite) return;
 
         auto* item = CCMenuItemSpriteExtra::create(
-            sprite, delegate, menu_selector(MegaSoftOpenDelegate::onOpen)
+            sprite, delegate, menu_selector(MegaSoftPulseOpenDelegate::onOpen)
         );
         if (!item) return;
 
         const auto size = CCDirector::sharedDirector()->getWinSize();
-        menu->setTag(kMegaSoftButtonTag);
+        menu->setTag(kMegaSoftPulseButtonTag);
         menu->setPosition({0.f, 0.f});
         item->setPosition({size.width - 52.f, size.height - 52.f});
         item->setScale(0.68f);
@@ -504,14 +549,15 @@ namespace {
     }
 }
 
-// Add the MH button to each new scene, not just the gameplay layer.
-class $modify(MegaSoftDirector, CCDirector) {
+// Add the MegaSoft Pulse quick-open button to each new scene, not just gameplay.
+class $modify(MegaSoftPulseDirector, CCDirector) {
     void drawScene() {
         // Enforce Music OFF in menus as well as in gameplay if the game starts
         // a new track after the toggle has been enabled.
         if (musicMuted()) applyMusicMute();
+        applyMusicPitch();
         if (auto* scene = this->getRunningScene()) {
-            attachMegaSoftButton(scene);
+            attachMegaSoftPulseButton(scene);
         }
         CCDirector::drawScene();
     }
@@ -519,7 +565,7 @@ class $modify(MegaSoftDirector, CCDirector) {
 
 // Capture input at Geometry Dash's common input dispatcher. This is more
 // reliable for on-screen/touch controls than relying only on PlayerObject hooks.
-class $modify(MegaSoftBaseGameLayer, GJBaseGameLayer) {
+class $modify(MegaSoftPulseBaseGameLayer, GJBaseGameLayer) {
     void handleButton(bool down, int button, bool isPlayer1) {
         if (isPlayer1 && !g_injectedInput) {
             recordInput(button, down);
@@ -528,10 +574,10 @@ class $modify(MegaSoftBaseGameLayer, GJBaseGameLayer) {
     }
 };
 
-class $modify(MegaSoftPlayLayer, PlayLayer) {
+class $modify(MegaSoftPulsePlayLayer, PlayLayer) {
     void update(float dt) {
-        // Reapply toggles as levels/scenes change. Music is only touched while
-        // muted, so normal playback is not repeatedly resumed every frame.
+        // Reapply time scale and pitch as levels/music channels change.
+        // The mute action itself is only repeated while muted, never resumed each frame.
         applySpeedhack();
         if (musicMuted()) applyMusicMute();
 
@@ -562,5 +608,6 @@ $on_mod(Loaded) {
         if (auto* scheduler = director->getScheduler()) scheduler->setTimeScale(1.0f);
     }
     if (musicMuted()) applyMusicMute();
-    log::info("Mega Soft loaded: compact menu, NoClip, Speedhack, Music toggle and GD Bot");
+    applyMusicPitch();
+    log::info("MegaSoft Pulse loaded: fixed popup layout, NoClip, Speedhack, Music Sync and GD Bot");
 }
