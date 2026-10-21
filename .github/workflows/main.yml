@@ -1,4 +1,4 @@
-name: Build Mega Soft Android
+name: Build MegaSoft Pulse Android
 
 on:
   workflow_dispatch:
@@ -18,9 +18,9 @@ jobs:
       matrix:
         include:
           - target: Android64
-            artifact: MegaSoft-Android64
+            artifact: MegaSoft-Pulse-Android64
           - target: Android32
-            artifact: MegaSoft-Android32
+            artifact: MegaSoft-Pulse-Android32
 
     steps:
       - name: Checkout repository
