@@ -1,21 +1,26 @@
 
 cmake_minimum_required(VERSION 3.21)
 
-set(CMAKE_CXX_STANDARD 23)
+project(MegaSoft VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-project(MegaSoft VERSION 1.0.0)
-
-if (NOT DEFINED ENV{GEODE_SDK})
-    message(FATAL_ERROR "Geode SDK not found: GEODE_SDK is not set")
+if(NOT DEFINED ENV{GEODE_SDK})
+    message(FATAL_ERROR "GEODE_SDK environment variable is missing")
 endif()
 
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+add_library(${PROJECT_NAME} SHARED
+    main.cpp
 )
 
-add_library(${PROJECT_NAME} SHARED ${SOURCES})
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    file(GLOB_RECURSE EXTRA_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    )
+    target_sources(${PROJECT_NAME} PRIVATE ${EXTRA_SOURCES})
+endif()
 
 add_subdirectory(
     "$ENV{GEODE_SDK}"
