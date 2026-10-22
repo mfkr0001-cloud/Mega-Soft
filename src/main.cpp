@@ -1109,6 +1109,12 @@ class VETERVisualsPopup;
 
 class VETERPopup : public Popup {
 private:
+    enum class MenuTab { Player = 0, Bot = 1, Visuals = 2, Settings = 3 };
+    CCNode* m_pages[4] = {nullptr, nullptr, nullptr, nullptr};
+    CCMenu* m_pageMenus[4] = {nullptr, nullptr, nullptr, nullptr};
+    ButtonSprite* m_tabSprites[4] = {nullptr, nullptr, nullptr, nullptr};
+    int m_activeTab = 0;
+
     ButtonSprite* m_noClipSprite = nullptr;
     ButtonSprite* m_speedhackSprite = nullptr;
     ButtonSprite* m_musicSprite = nullptr;
@@ -1118,24 +1124,130 @@ private:
     ButtonSprite* m_botSlotSprite = nullptr;
     ButtonSprite* m_botRateSprite = nullptr;
 
+    ButtonSprite* m_fpsEnabledSprite = nullptr;
+    ButtonSprite* m_fpsValueSprite = nullptr;
+    ButtonSprite* m_retrySprite = nullptr;
+    ButtonSprite* m_hitboxSprite = nullptr;
+    ButtonSprite* m_cpsSprite = nullptr;
+    ButtonSprite* m_practiceMusicSprite = nullptr;
+    ButtonSprite* m_noclipLimitSprite = nullptr;
+    ButtonSprite* m_noclipLimitValueSprite = nullptr;
+    ButtonSprite* m_frameStepSprite = nullptr;
+    ButtonSprite* m_noDeathEffectSprite = nullptr;
+    ButtonSprite* m_hitboxesOnDeathSprite = nullptr;
+    ButtonSprite* m_confirmExitSprite = nullptr;
+    ButtonSprite* m_layoutModeSprite = nullptr;
+
+    ButtonSprite* m_trajectorySprite = nullptr;
+    ButtonSprite* m_predictionSprite = nullptr;
+    ButtonSprite* m_clicksSprite = nullptr;
+    ButtonSprite* m_fpsCounterSprite = nullptr;
+    ButtonSprite* m_customMusicSprite = nullptr;
+    ButtonSprite* m_transparentPauseSprite = nullptr;
+    ButtonSprite* m_hidePauseSprite = nullptr;
+
+    void refreshTabs() {
+        static const char* labels[] = {"PLAYER", "GD BOT", "VISUALS", "SETTINGS"};
+        for (int i = 0; i < 4; ++i) {
+            if (!m_tabSprites[i]) continue;
+            const std::string label = labels[i];
+            m_tabSprites[i]->setString(label.c_str());
+            m_tabSprites[i]->setColor(i == m_activeTab ? ccc3(60, 245, 255) : ccc3(235, 240, 255));
+        }
+    }
+
+    void selectTab(int tab) {
+        m_activeTab = std::clamp(tab, 0, 3);
+        for (int i = 0; i < 4; ++i) {
+            const bool active = i == m_activeTab;
+            if (m_pages[i]) m_pages[i]->setVisible(active);
+            // Hide the CCMenu itself too: some Cocos2d touch dispatch paths check
+            // a menu's own visibility rather than walking invisible ancestors.
+            if (m_pageMenus[i]) m_pageMenus[i]->setVisible(active);
+        }
+        refreshTabs();
+    }
+
+    void refreshSettingsLabels() {
+        if (m_fpsEnabledSprite) m_fpsEnabledSprite->setString(fpsBypassEnabled() ? "FPS ON" : "FPS OFF");
+        if (m_fpsValueSprite) {
+            char value[24];
+            std::snprintf(value, sizeof(value), "%d FPS", targetFPS());
+            m_fpsValueSprite->setString(value);
+        }
+        if (m_retrySprite) m_retrySprite->setString(autoRetryEnabled() ? "RETRY ON" : "RETRY OFF");
+        if (m_hitboxSprite) m_hitboxSprite->setString(hitboxesEnabled() ? "HITBOX ON" : "HITBOX OFF");
+        if (m_cpsSprite) m_cpsSprite->setString(cpsEnabled() ? "CPS ON" : "CPS OFF");
+        if (m_practiceMusicSprite) m_practiceMusicSprite->setString(practiceMusicEnabled() ? "PRACTICE ON" : "PRACTICE OFF");
+        if (m_noclipLimitSprite) m_noclipLimitSprite->setString(noclipLimitEnabled() ? "NC LIMIT ON" : "NC LIMIT OFF");
+        if (m_noclipLimitValueSprite) m_noclipLimitValueSprite->setString(("NC MAX " + std::to_string(noclipMaxDeaths())).c_str());
+        if (m_frameStepSprite) m_frameStepSprite->setString(frameStepEnabled() ? "FRAME STEP ON" : "FRAME STEP OFF");
+        if (m_noDeathEffectSprite) m_noDeathEffectSprite->setString(noDeathEffectEnabled() ? "NO DEATH FX ON" : "NO DEATH FX OFF");
+        if (m_hitboxesOnDeathSprite) m_hitboxesOnDeathSprite->setString(hitboxesOnDeathEnabled() ? "DEATH BOX ON" : "DEATH BOX OFF");
+        if (m_confirmExitSprite) m_confirmExitSprite->setString(confirmExitEnabled() ? "EXIT CONFIRM ON" : "EXIT CONFIRM OFF");
+        if (m_layoutModeSprite) m_layoutModeSprite->setString(layoutModeEnabled() ? "GRID ON" : "GRID OFF");
+    }
+
+    void refreshVisualLabels() {
+        if (m_trajectorySprite) m_trajectorySprite->setString(trajectoryEnabled() ? "TRAIL ON" : "TRAIL OFF");
+        if (m_predictionSprite) m_predictionSprite->setString(trajectoryPredictorEnabled() ? "PREDICT ON" : "PREDICT OFF");
+        if (m_clicksSprite) m_clicksSprite->setString(showClicksEnabled() ? "CLICKS ON" : "CLICKS OFF");
+        if (m_fpsCounterSprite) m_fpsCounterSprite->setString(fpsCounterEnabled() ? "FPS COUNT ON" : "FPS COUNT OFF");
+        if (m_customMusicSprite) m_customMusicSprite->setString(customMenuMusicEnabled() ? "MENU MUSIC ON" : "MENU MUSIC OFF");
+        if (m_transparentPauseSprite) m_transparentPauseSprite->setString(transparentPauseEnabled() ? "PAUSE ALPHA ON" : "PAUSE ALPHA OFF");
+        if (m_hidePauseSprite) m_hidePauseSprite->setString(hidePauseButtonEnabled() ? "HIDE PAUSE ON" : "HIDE PAUSE OFF");
+    }
+
+    void cycleCheckpoint(int direction) {
+        auto* layer = PlayLayer::get();
+        if (!layer || !layer->m_checkpointArray || layer->m_checkpointArray->count() == 0) {
+            notify("Checkpoint Switcher: no checkpoints yet; use Practice Mode first");
+            return;
+        }
+        const int count = static_cast<int>(layer->m_checkpointArray->count());
+        if (g_checkpointIndex < 0 || g_checkpointIndex >= count) {
+            g_checkpointIndex = direction > 0 ? 0 : count - 1;
+        } else {
+            g_checkpointIndex = (g_checkpointIndex + direction + count) % count;
+        }
+        auto* checkpoint = static_cast<CheckpointObject*>(layer->m_checkpointArray->objectAtIndex(g_checkpointIndex));
+        if (checkpoint) {
+            layer->loadFromCheckpoint(checkpoint);
+            notify("Checkpoint " + std::to_string(g_checkpointIndex + 1) + "/" + std::to_string(count));
+        }
+    }
+
 protected:
     bool init() {
-        // Compact grid; button labels are deliberately short so they stay inside
-        // the popup on narrow Android screens as well as on desktop.
-        if (!Popup::init(360.f, 450.f)) return false;
+        // A short window leaves enough vertical room for a wide-screen Android layout.
+        if (!Popup::init(350.f, 305.f)) return false;
         setTitle("VETER");
 
-        auto* menu = CCMenu::create();
-        if (!menu || !m_mainLayer) return false;
-        menu->setPosition({0.f, 0.f});
-        // Popup's frame and content live in m_mainLayer. Parenting the menu to
-        // the outer Popup shifts buttons away from the visible square.
-        m_mainLayer->addChild(menu);
-
+        if (!m_mainLayer) return false;
         const auto size = m_mainLayer->getContentSize();
-        auto addButton = [&](const std::string& text, SEL_MenuHandler selector,
-                             float x, float y, const char* frame) -> ButtonSprite* {
-            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, 0.32f);
+        auto* darkPanel = CCLayerColor::create(ccc4(16, 20, 34, 250), size.width, size.height);
+        if (darkPanel) m_mainLayer->addChild(darkPanel, -5);
+        auto* accent = CCLayerColor::create(ccc4(0, 220, 255, 255), size.width - 18.f, 3.f);
+        if (accent) {
+            accent->setPosition({9.f, size.height - 28.f});
+            m_mainLayer->addChild(accent, -4);
+        }
+
+        auto makeMenu = [&](int tabIndex) -> CCMenu* {
+            m_pages[tabIndex] = CCNode::create();
+            if (!m_pages[tabIndex]) return nullptr;
+            m_mainLayer->addChild(m_pages[tabIndex], 1);
+            auto* menu = CCMenu::create();
+            if (!menu) return nullptr;
+            menu->setPosition({0.f, 0.f});
+            m_pageMenus[tabIndex] = menu;
+            m_pages[tabIndex]->addChild(menu);
+            return menu;
+        };
+        auto addButton = [&](CCMenu* menu, const std::string& text, SEL_MenuHandler selector,
+                             float x, float y, const char* frame, float fontScale = 0.27f) -> ButtonSprite* {
+            if (!menu) return nullptr;
+            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, fontScale);
             if (!sprite) return nullptr;
             auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
             if (!item) return nullptr;
@@ -1143,131 +1255,169 @@ protected:
             menu->addChild(item);
             return sprite;
         };
+        auto* nav = CCMenu::create();
+        if (!nav) return false;
+        nav->setPosition({0.f, 0.f});
+        m_mainLayer->addChild(nav, 5);
+        auto tabButton = [&](int idx, const char* label, SEL_MenuHandler selector, float x) {
+            auto* sprite = ButtonSprite::create(label, "bigFont.fnt",
+                idx == 0 ? "GJ_button_02.png" : "GJ_button_01.png", 0.25f);
+            if (!sprite) return;
+            auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
+            if (!item) return;
+            item->setPosition({x, size.height - 49.f});
+            m_tabSprites[idx] = sprite;
+            nav->addChild(item);
+        };
+        tabButton(0, "PLAYER", menu_selector(VETERPopup::onTabPlayer), size.width * 0.14f);
+        tabButton(1, "GD BOT", menu_selector(VETERPopup::onTabBot), size.width * 0.38f);
+        tabButton(2, "VISUALS", menu_selector(VETERPopup::onTabVisuals), size.width * 0.63f);
+        tabButton(3, "SETTINGS", menu_selector(VETERPopup::onTabSettings), size.width * 0.87f);
 
-        const float left = size.width * 0.36f;
+        const float left = size.width * 0.19f;
         const float center = size.width * 0.50f;
-        const float right = size.width * 0.64f;
-        const float rowToggles = size.height - 72.f;
-        const float rowMusic = size.height - 118.f;
-        const float rowSpeed = size.height - 164.f;
-        const float rowBot1 = size.height - 210.f;
-        const float rowBot2 = size.height - 255.f;
-        const float rowBot2Left = size.width * 0.28f;
-        const float rowBot2Right = size.width * 0.72f;
-        const float rowBot3 = size.height - 300.f;
-        const float rowBot4 = size.height - 344.f;
-        const float rowBot5 = size.height - 388.f;
+        const float right = size.width * 0.81f;
+        const float top = size.height - 92.f;
 
-        m_noClipSprite = addButton(noclipEnabled() ? "NOCLIP ON" : "NOCLIP OFF",
-            menu_selector(VETERPopup::onToggleNoClip), left, rowToggles,
-            noclipEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_speedhackSprite = addButton(speedhackEnabled() ? "SPEED ON" : "SPEED OFF",
-            menu_selector(VETERPopup::onToggleSpeedhack), right, rowToggles,
-            speedhackEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_musicSprite = addButton(musicMuted() ? "MUSIC OFF" : "MUSIC ON",
-            menu_selector(VETERPopup::onToggleMusic), left, rowMusic,
-            musicMuted() ? "GJ_button_04.png" : "GJ_button_02.png");
-        m_musicSyncSprite = addButton(musicSpeedSyncEnabled() ? "MUSIC SPD ON" : "MUSIC SPD OFF",
-            menu_selector(VETERPopup::onToggleMusicSync), right, rowMusic,
-            musicSpeedSyncEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        // PLAYER tab: gameplay switches and speed controls.
+        auto* player = makeMenu(0);
+        m_noClipSprite = addButton(player, noclipEnabled() ? "NOCLIP ON" : "NOCLIP OFF",
+            menu_selector(VETERPopup::onToggleNoClip), left, top, noclipEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_speedhackSprite = addButton(player, speedhackEnabled() ? "SPEED ON" : "SPEED OFF",
+            menu_selector(VETERPopup::onToggleSpeedhack), center, top, speedhackEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_musicSprite = addButton(player, musicMuted() ? "MUSIC OFF" : "MUSIC ON",
+            menu_selector(VETERPopup::onToggleMusic), right, top, musicMuted() ? "GJ_button_04.png" : "GJ_button_02.png");
+        addButton(player, "-0.1x", menu_selector(VETERPopup::onSpeedDown), left, top - 50.f, "GJ_button_01.png");
+        m_speedValueSprite = addButton(player, speedLabel(), menu_selector(VETERPopup::onSpeedLabel), center, top - 50.f, "GJ_button_02.png");
+        addButton(player, "+0.1x", menu_selector(VETERPopup::onSpeedUp), right, top - 50.f, "GJ_button_01.png");
+        m_musicSyncSprite = addButton(player, musicSpeedSyncEnabled() ? "MUSIC SYNC ON" : "MUSIC SYNC OFF",
+            menu_selector(VETERPopup::onToggleMusicSync), center, top - 101.f,
+            musicSpeedSyncEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", 0.25f);
 
-        addButton("-0.1x", menu_selector(VETERPopup::onSpeedDown), left, rowSpeed, "GJ_button_01.png");
-        m_speedValueSprite = addButton(speedLabel(), menu_selector(VETERPopup::onSpeedLabel), center, rowSpeed, "GJ_button_02.png");
-        addButton("+0.1x", menu_selector(VETERPopup::onSpeedUp), right, rowSpeed, "GJ_button_01.png");
+        // GD BOT tab: all macro controls stay together and fit in four rows.
+        auto* bot = makeMenu(1);
+        const float botGap = 43.f;
+        auto botRow = [&](int i) { return top - 3.f - botGap * static_cast<float>(i); };
+        addButton(bot, "REC", menu_selector(VETERPopup::onRecord), left, botRow(0), "GJ_button_01.png");
+        addButton(bot, "STOP", menu_selector(VETERPopup::onStopBot), center, botRow(0), "GJ_button_04.png");
+        addButton(bot, "PLAY", menu_selector(VETERPopup::onPlay), right, botRow(0), "GJ_button_01.png");
+        addButton(bot, "CONTINUE", menu_selector(VETERPopup::onContinue), left, botRow(1), "GJ_button_02.png", 0.25f);
+        addButton(bot, "SAVE", menu_selector(VETERPopup::onSave), center, botRow(1), "GJ_button_02.png");
+        addButton(bot, "LOAD", menu_selector(VETERPopup::onLoad), right, botRow(1), "GJ_button_02.png");
+        addButton(bot, "STATUS", menu_selector(VETERPopup::onBotStatus), left, botRow(2), "GJ_button_01.png");
+        m_botLoopSprite = addButton(bot, botLoopEnabled() ? "LOOP ON" : "LOOP OFF",
+            menu_selector(VETERPopup::onToggleBotLoop), center, botRow(2), botLoopEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_botSlotSprite = addButton(bot, "SLOT " + std::to_string(botMacroSlot()), menu_selector(VETERPopup::onNextBotSlot),
+            right, botRow(2), "GJ_button_01.png");
+        addButton(bot, "RATE -", menu_selector(VETERPopup::onBotRateDown), left, botRow(3), "GJ_button_01.png");
+        m_botRateSprite = addButton(bot, botPlaybackRateLabel(), menu_selector(VETERPopup::onBotRateInfo), center, botRow(3), "GJ_button_02.png");
+        addButton(bot, "RATE +", menu_selector(VETERPopup::onBotRateUp), right, botRow(3), "GJ_button_01.png");
 
-        addButton("BOT REC", menu_selector(VETERPopup::onRecord), left, rowBot1, "GJ_button_01.png");
-        addButton("BOT STOP", menu_selector(VETERPopup::onStopBot), right, rowBot1, "GJ_button_04.png");
-        addButton("BOT PLAY", menu_selector(VETERPopup::onPlay), rowBot2Left, rowBot2, "GJ_button_01.png");
-        addButton("CONTINUE", menu_selector(VETERPopup::onContinue), center, rowBot2, "GJ_button_02.png");
-        addButton("BOT SAVE", menu_selector(VETERPopup::onSave), rowBot2Right, rowBot2, "GJ_button_02.png");
-        addButton("BOT LOAD", menu_selector(VETERPopup::onLoad), left, rowBot3, "GJ_button_02.png");
-        addButton("BOT STATUS", menu_selector(VETERPopup::onBotStatus), right, rowBot3, "GJ_button_01.png");
+        // VISUALS tab: these are direct controls, not another oversized popup.
+        auto* visuals = makeMenu(2);
+        const float visualGap = 47.f;
+        auto visualRow = [&](int i) { return top - visualGap * static_cast<float>(i); };
+        m_trajectorySprite = addButton(visuals, trajectoryEnabled() ? "TRAIL ON" : "TRAIL OFF",
+            menu_selector(VETERPopup::onToggleTrajectory), left, visualRow(0), trajectoryEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_predictionSprite = addButton(visuals, trajectoryPredictorEnabled() ? "PREDICT ON" : "PREDICT OFF",
+            menu_selector(VETERPopup::onTogglePrediction), center, visualRow(0), trajectoryPredictorEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_clicksSprite = addButton(visuals, showClicksEnabled() ? "CLICKS ON" : "CLICKS OFF",
+            menu_selector(VETERPopup::onToggleClicks), right, visualRow(0), showClicksEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_fpsCounterSprite = addButton(visuals, fpsCounterEnabled() ? "FPS COUNT ON" : "FPS COUNT OFF",
+            menu_selector(VETERPopup::onToggleFPSCounter), left, visualRow(1), fpsCounterEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", 0.24f);
+        m_customMusicSprite = addButton(visuals, customMenuMusicEnabled() ? "MENU MUSIC ON" : "MENU MUSIC OFF",
+            menu_selector(VETERPopup::onToggleCustomMusic), center, visualRow(1), customMenuMusicEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", 0.24f);
+        m_transparentPauseSprite = addButton(visuals, transparentPauseEnabled() ? "PAUSE ALPHA ON" : "PAUSE ALPHA OFF",
+            menu_selector(VETERPopup::onToggleTransparentPause), right, visualRow(1), transparentPauseEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", 0.23f);
+        m_hidePauseSprite = addButton(visuals, hidePauseButtonEnabled() ? "HIDE PAUSE ON" : "HIDE PAUSE OFF",
+            menu_selector(VETERPopup::onToggleHidePause), left, visualRow(2), hidePauseButtonEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", 0.24f);
+        addButton(visuals, "MUSIC FILE INFO", menu_selector(VETERPopup::onMusicInfo), center, visualRow(2), "GJ_button_01.png", 0.24f);
 
-        m_botLoopSprite = addButton(botLoopEnabled() ? "BOT LOOP ON" : "BOT LOOP OFF",
-            menu_selector(VETERPopup::onToggleBotLoop), left, rowBot4,
-            botLoopEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_botSlotSprite = addButton("BOT SLOT " + std::to_string(botMacroSlot()),
-            menu_selector(VETERPopup::onNextBotSlot), right, rowBot4, "GJ_button_01.png");
-        addButton("-0.25x", menu_selector(VETERPopup::onBotRateDown), left, rowBot5, "GJ_button_01.png");
-        m_botRateSprite = addButton(botPlaybackRateLabel(), menu_selector(VETERPopup::onBotRateInfo), center, rowBot5, "GJ_button_02.png");
-        addButton("+0.25x", menu_selector(VETERPopup::onBotRateUp), right, rowBot5, "GJ_button_01.png");
+        // SETTINGS tab: compact controls for the remaining toggles and utilities.
+        auto* settings = makeMenu(3);
+        const float setTop = size.height - 91.f;
+        const float setGap = 25.3f;
+        auto setRow = [&](int i) { return setTop - setGap * static_cast<float>(i); };
+        const float small = 0.215f;
+        m_fpsEnabledSprite = addButton(settings, fpsBypassEnabled() ? "FPS ON" : "FPS OFF", menu_selector(VETERPopup::onSetFPS), left, setRow(0), fpsBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        m_retrySprite = addButton(settings, autoRetryEnabled() ? "RETRY ON" : "RETRY OFF", menu_selector(VETERPopup::onSetRetry), center, setRow(0), autoRetryEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        m_hitboxSprite = addButton(settings, hitboxesEnabled() ? "HITBOX ON" : "HITBOX OFF", menu_selector(VETERPopup::onSetHitboxes), right, setRow(0), hitboxesEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        addButton(settings, "FPS -30", menu_selector(VETERPopup::onFPSDown), left, setRow(1), "GJ_button_01.png", small);
+        m_fpsValueSprite = addButton(settings, "", menu_selector(VETERPopup::onFPSInfo), center, setRow(1), "GJ_button_02.png", small);
+        addButton(settings, "FPS +30", menu_selector(VETERPopup::onFPSUp), right, setRow(1), "GJ_button_01.png", small);
+        m_cpsSprite = addButton(settings, cpsEnabled() ? "CPS ON" : "CPS OFF", menu_selector(VETERPopup::onSetCPS), left, setRow(2), cpsEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        m_practiceMusicSprite = addButton(settings, practiceMusicEnabled() ? "PRACTICE ON" : "PRACTICE OFF", menu_selector(VETERPopup::onSetPracticeMusic), center, setRow(2), practiceMusicEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        m_noclipLimitSprite = addButton(settings, noclipLimitEnabled() ? "NC LIMIT ON" : "NC LIMIT OFF", menu_selector(VETERPopup::onSetNoclipLimit), right, setRow(2), noclipLimitEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        m_noclipLimitValueSprite = addButton(settings, "", menu_selector(VETERPopup::onSetNoclipMax), left, setRow(3), "GJ_button_01.png", small);
+        m_noDeathEffectSprite = addButton(settings, noDeathEffectEnabled() ? "NO DEATH FX ON" : "NO DEATH FX OFF", menu_selector(VETERPopup::onSetNoDeathEffect), center, setRow(3), noDeathEffectEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        m_hitboxesOnDeathSprite = addButton(settings, hitboxesOnDeathEnabled() ? "DEATH BOX ON" : "DEATH BOX OFF", menu_selector(VETERPopup::onSetHitboxesOnDeath), right, setRow(3), hitboxesOnDeathEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        m_frameStepSprite = addButton(settings, frameStepEnabled() ? "FRAME STEP ON" : "FRAME STEP OFF", menu_selector(VETERPopup::onSetFrameStep), left, setRow(4), frameStepEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        addButton(settings, "STEP +1", menu_selector(VETERPopup::onStepFrame), center, setRow(4), "GJ_button_01.png", small);
+        m_layoutModeSprite = addButton(settings, layoutModeEnabled() ? "GRID ON" : "GRID OFF", menu_selector(VETERPopup::onSetLayoutMode), right, setRow(4), layoutModeEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        addButton(settings, "CP PREV", menu_selector(VETERPopup::onPreviousCheckpoint), left, setRow(5), "GJ_button_01.png", small);
+        addButton(settings, "CP NEXT", menu_selector(VETERPopup::onNextCheckpoint), center, setRow(5), "GJ_button_01.png", small);
+        m_confirmExitSprite = addButton(settings, confirmExitEnabled() ? "EXIT CONFIRM ON" : "EXIT CONFIRM OFF", menu_selector(VETERPopup::onSetConfirmExit), right, setRow(5), confirmExitEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
+        addButton(settings, "EDITOR", menu_selector(VETERPopup::onOpenEditor), left, setRow(6), "GJ_button_01.png", small);
+        addButton(settings, "UNLOCKS", menu_selector(VETERPopup::onOpenUnlocks), center, setRow(6), "GJ_button_01.png", small);
+        addButton(settings, "FAST RESET", menu_selector(VETERPopup::onFastReset), right, setRow(6), "GJ_button_01.png", small);
 
-        addButton("MORE TOOLS", menu_selector(VETERPopup::onMore),
-            center, 27.f, "GJ_button_01.png");
+        selectTab(0);
+        refreshSettingsLabels();
+        refreshVisualLabels();
         return true;
     }
 
 public:
     void onMore(CCObject*);
+    void onOpenEditor(CCObject*);
+    void onOpenUnlocks(CCObject*);
 
     static VETERPopup* create() {
         auto* popup = new VETERPopup();
-        if (popup && popup->init()) {
-            popup->autorelease();
-            return popup;
-        }
+        if (popup && popup->init()) { popup->autorelease(); return popup; }
         delete popup;
         return nullptr;
     }
+
+    void onTabPlayer(CCObject*) { selectTab(0); }
+    void onTabBot(CCObject*) { selectTab(1); }
+    void onTabVisuals(CCObject*) { selectTab(2); }
+    void onTabSettings(CCObject*) { selectTab(3); }
 
     void onToggleNoClip(CCObject*) {
         toggleNoClip();
         if (m_noClipSprite) m_noClipSprite->setString(noclipEnabled() ? "NOCLIP ON" : "NOCLIP OFF");
     }
-
     void onToggleSpeedhack(CCObject*) {
         toggleSpeedhack();
         if (m_speedhackSprite) m_speedhackSprite->setString(speedhackEnabled() ? "SPEED ON" : "SPEED OFF");
     }
-
     void onToggleMusic(CCObject*) {
         setMusicMuted(!musicMuted());
         if (m_musicSprite) m_musicSprite->setString(musicMuted() ? "MUSIC OFF" : "MUSIC ON");
     }
-
     void onToggleMusicSync(CCObject*) {
         setMusicSpeedSyncEnabled(!musicSpeedSyncEnabled());
-        if (m_musicSyncSprite) {
-            m_musicSyncSprite->setString(musicSpeedSyncEnabled() ? "MUSIC SPD ON" : "MUSIC SPD OFF");
-        }
+        if (m_musicSyncSprite) m_musicSyncSprite->setString(musicSpeedSyncEnabled() ? "MUSIC SYNC ON" : "MUSIC SYNC OFF");
     }
-
-    void onSpeedLabel(CCObject*) {
-        notify("Tap -0.1x or +0.1x to set speed");
-    }
-
+    void onSpeedLabel(CCObject*) { notify("Tap -0.1x or +0.1x to set speed"); }
     void onSpeedDown(CCObject*) {
         setSpeedMultiplier(speedMultiplier() - 0.1f);
         if (speedhackEnabled()) applySpeedhack();
         if (m_speedValueSprite) m_speedValueSprite->setString(speedLabel().c_str());
         notify("VETER: speed set to " + speedLabel().substr(6));
     }
-
     void onSpeedUp(CCObject*) {
         setSpeedMultiplier(speedMultiplier() + 0.1f);
         if (speedhackEnabled()) applySpeedhack();
         if (m_speedValueSprite) m_speedValueSprite->setString(speedLabel().c_str());
         notify("VETER: speed set to " + speedLabel().substr(6));
     }
-
     void onRecord(CCObject*) {
-        if (g_botMode != BotMode::Idle) {
-            notify("GD Bot: stop the current action before starting a new recording");
-            onClose(nullptr);
-            return;
-        }
+        if (g_botMode != BotMode::Idle) { notify("GD Bot: stop the current action before starting a new recording"); onClose(nullptr); return; }
         auto* layer = PlayLayer::get();
-        if (!layer || !layer->m_player1) {
-            notify("GD Bot: enter a level first");
-            onClose(nullptr);
-            return;
-        }
-        // If the user starts a fresh recording during Continue, save the combined
-        // macro first; never silently erase the previous section.
-        if (g_botContinueSession && !finalizeContinueSession()) {
-            onClose(nullptr);
-            return;
-        }
+        if (!layer || !layer->m_player1) { notify("GD Bot: enter a level first"); onClose(nullptr); return; }
+        if (g_botContinueSession && !finalizeContinueSession()) { onClose(nullptr); return; }
         stopBot(false);
         g_events.clear();
         g_macroSlotInMemory = botMacroSlot();
@@ -1285,173 +1435,76 @@ public:
         notify("GD Bot: recording started; play the level now");
         onClose(nullptr);
     }
-
     void onStopBot(CCObject*) {
-        if (g_botContinueSession) {
-            finalizeContinueSession();
-        } else {
-            stopBot();
-        }
+        if (g_botContinueSession) finalizeContinueSession(); else stopBot();
         onClose(nullptr);
     }
-
     void onPlay(CCObject*) {
-        if (g_botMode != BotMode::Idle) {
-            notify("GD Bot: stop the current action before starting playback");
-            onClose(nullptr);
-            return;
-        }
+        if (g_botMode != BotMode::Idle) { notify("GD Bot: stop the current action before starting playback"); onClose(nullptr); return; }
         auto* layer = PlayLayer::get();
-        if (!layer || !layer->m_player1) {
-            notify("GD Bot: enter the recorded level first");
-            onClose(nullptr);
-            return;
-        }
-        if (g_botContinueSession && !finalizeContinueSession()) {
-            onClose(nullptr);
-            return;
-        }
+        if (!layer || !layer->m_player1) { notify("GD Bot: enter the recorded level first"); onClose(nullptr); return; }
+        if (g_botContinueSession && !finalizeContinueSession()) { onClose(nullptr); return; }
         if (g_events.empty() || g_macroSlotInMemory != botMacroSlot()) {
-            if (!loadMacro()) {
-                notify("GD Bot: no valid macro in the selected slot; old in-memory data was not played");
-                onClose(nullptr);
-                return;
-            }
+            if (!loadMacro()) { notify("GD Bot: no valid macro in the selected slot; old in-memory data was not played"); onClose(nullptr); return; }
         }
-        if (g_events.empty()) {
-            notify("GD Bot: record or load a macro first");
-            onClose(nullptr);
-            return;
-        }
+        if (g_events.empty()) { notify("GD Bot: record or load a macro first"); onClose(nullptr); return; }
         const int levelID = currentLevelID();
-        if (g_macroLevelID != 0 && levelID != 0 && g_macroLevelID != levelID) {
-            notify("GD Bot: this macro belongs to another level");
-            onClose(nullptr);
-            return;
-        }
+        if (g_macroLevelID != 0 && levelID != 0 && g_macroLevelID != levelID) { notify("GD Bot: this macro belongs to another level"); onClose(nullptr); return; }
         stopBot(false);
-        g_botClock = 0.0;
-        g_playIndex = 0;
-        g_playbackHeldButtons.clear();
-        g_botContinueHandoffPending = false;
-        g_botPlaybackFinishPending = false;
-        g_botLoopRestartPending = false;
+        g_botClock = 0.0; g_playIndex = 0; g_playbackHeldButtons.clear();
+        g_botContinueHandoffPending = false; g_botPlaybackFinishPending = false; g_botLoopRestartPending = false;
         g_botClockAdvancedThisFrame = false;
         layer->resetLevel();
-        g_botLayer = layer;
-        g_botMode = BotMode::Playing;
-        g_botContinueSession = false;
+        g_botLayer = layer; g_botMode = BotMode::Playing; g_botContinueSession = false;
         notify("GD Bot: playback started");
         onClose(nullptr);
     }
-
     void onContinue(CCObject*) {
-        if (g_botContinueSession) {
-            notify("GD Bot: a Continue session is already active; stop/save it first");
-            onClose(nullptr);
-            return;
-        }
-        if (g_botMode != BotMode::Idle) {
-            notify("GD Bot: stop the current bot action first");
-            onClose(nullptr);
-            return;
-        }
-        // Continue must use the selected slot's persisted macro, not a stale in-memory
-        // recording from another slot. A failed load leaves the old in-memory data safe,
-        // but is not allowed to start Continue from it by accident.
-        if (!loadMacro()) {
-            notify("GD Bot Continue: save a macro in the selected slot first");
-            onClose(nullptr);
-            return;
-        }
+        if (g_botContinueSession) { notify("GD Bot: a Continue session is already active; stop/save it first"); onClose(nullptr); return; }
+        if (g_botMode != BotMode::Idle) { notify("GD Bot: stop the current bot action first"); onClose(nullptr); return; }
+        if (!loadMacro()) { notify("GD Bot Continue: save a macro in the selected slot first"); onClose(nullptr); return; }
         auto* layer = PlayLayer::get();
-        if (!layer || !layer->m_player1) {
-            notify("GD Bot Continue: open the macro's level first; Practice activates automatically");
-            onClose(nullptr);
-            return;
-        }
+        if (!layer || !layer->m_player1) { notify("GD Bot Continue: open the macro's level first; Practice activates automatically"); onClose(nullptr); return; }
         const int levelID = currentLevelID();
-        if (g_macroLevelID != 0 && levelID != 0 && g_macroLevelID != levelID) {
-            notify("GD Bot Continue: open the same level as the saved macro");
-            onClose(nullptr);
-            return;
-        }
-        if (g_events.size() >= kMaxMacroEvents) {
-            notify("GD Bot Continue: event limit reached; old macro kept");
-            onClose(nullptr);
-            return;
-        }
-
-        // Unlike a normal playback, Continue starts from the beginning in Practice
-        // mode, replays the full old macro, then appends new inputs to the same vector.
+        if (g_macroLevelID != 0 && levelID != 0 && g_macroLevelID != levelID) { notify("GD Bot Continue: open the same level as the saved macro"); onClose(nullptr); return; }
+        if (g_events.size() >= kMaxMacroEvents) { notify("GD Bot Continue: event limit reached; old macro kept"); onClose(nullptr); return; }
         layer->togglePracticeMode(true);
         stopBot(false);
-        g_botClock = 0.0;
-        g_playIndex = 0;
-        g_playbackHeldButtons.clear();
-        g_botContinueHandoffPending = false;
-        g_botPlaybackFinishPending = false;
-        g_botLoopRestartPending = false;
+        g_botClock = 0.0; g_playIndex = 0; g_playbackHeldButtons.clear();
+        g_botContinueHandoffPending = false; g_botPlaybackFinishPending = false; g_botLoopRestartPending = false;
         g_botClockAdvancedThisFrame = false;
         layer->resetLevelFromStart();
-        g_botLayer = layer;
-        g_botMode = BotMode::Continuing;
-        g_botContinueOriginalEventCount = g_events.size();
-        g_botContinueSession = true;
+        g_botLayer = layer; g_botMode = BotMode::Continuing;
+        g_botContinueOriginalEventCount = g_events.size(); g_botContinueSession = true;
         notify("GD Bot Continue: Practice ON; replaying saved inputs, then recording will append without deleting them");
         onClose(nullptr);
     }
-
     void onSave(CCObject*) {
-        // Saving during Continue playback stores the intact previous macro but must
-        // not disable the pending append phase when playback reaches its endpoint.
         const bool continuePlaybackInProgress = g_botMode == BotMode::Continuing;
         if (saveMacro() && !continuePlaybackInProgress) g_botContinueSession = false;
         onClose(nullptr);
     }
     void onLoad(CCObject*) {
-        if (g_botMode != BotMode::Idle) {
-            notify("GD Bot: stop the current action before loading a macro");
-            onClose(nullptr);
-            return;
-        }
-        if (g_botContinueSession && !finalizeContinueSession()) {
-            onClose(nullptr);
-            return;
-        }
+        if (g_botMode != BotMode::Idle) { notify("GD Bot: stop the current action before loading a macro"); onClose(nullptr); return; }
+        if (g_botContinueSession && !finalizeContinueSession()) { onClose(nullptr); return; }
         loadMacro();
         onClose(nullptr);
     }
-
     void onBotStatus(CCObject*) {
-        const char* mode = g_botMode == BotMode::Recording ? "RECORDING" :
-                           g_botMode == BotMode::Continuing ? "CONTINUE PLAYBACK" :
-                           g_botMode == BotMode::Playing ? "PLAYING" : "IDLE";
-        notify(std::string("GD Bot: ") + mode + " | events: " + std::to_string(g_events.size()) +
-            " | slot: " + std::to_string(botMacroSlot()) +
-            " | buffer: " + std::to_string(g_macroSlotInMemory) +
-            (botLoopEnabled() ? " | loop: ON" : " | loop: OFF") +
-            (g_botContinueSession ? " | append session: ON" : ""));
+        const char* mode = g_botMode == BotMode::Recording ? "RECORDING" : g_botMode == BotMode::Continuing ? "CONTINUE PLAYBACK" : g_botMode == BotMode::Playing ? "PLAYING" : "IDLE";
+        notify(std::string("GD Bot: ") + mode + " | events: " + std::to_string(g_events.size()) + " | slot: " + std::to_string(botMacroSlot()) + " | buffer: " + std::to_string(g_macroSlotInMemory) + (botLoopEnabled() ? " | loop: ON" : " | loop: OFF") + (g_botContinueSession ? " | append session: ON" : ""));
     }
-
     void onToggleBotLoop(CCObject*) {
         setBotLoopEnabled(!botLoopEnabled());
-        if (m_botLoopSprite) m_botLoopSprite->setString(botLoopEnabled() ? "BOT LOOP ON" : "BOT LOOP OFF");
+        if (m_botLoopSprite) m_botLoopSprite->setString(botLoopEnabled() ? "LOOP ON" : "LOOP OFF");
         notify(std::string("GD Bot loop ") + (botLoopEnabled() ? "ON" : "OFF"));
     }
     void onNextBotSlot(CCObject*) {
-        if (g_botMode != BotMode::Idle || g_botContinueSession) {
-            notify("GD Bot: stop/save the current bot action before switching macro slots");
-            return;
-        }
+        if (g_botMode != BotMode::Idle || g_botContinueSession) { notify("GD Bot: stop/save the current bot action before switching macro slots"); return; }
         const int nextSlot = botMacroSlot() >= 3 ? 1 : botMacroSlot() + 1;
         setBotMacroSlot(nextSlot);
-        if (m_botSlotSprite) m_botSlotSprite->setString(("BOT SLOT " + std::to_string(nextSlot)).c_str());
-        if (g_macroSlotInMemory == nextSlot) {
-            notify("GD Bot: active slot " + std::to_string(nextSlot) + " (current buffer belongs to this slot)");
-        } else {
-            notify("GD Bot: active slot " + std::to_string(nextSlot) + "; use BOT LOAD or BOT PLAY to load its saved macro");
-        }
+        if (m_botSlotSprite) m_botSlotSprite->setString(("SLOT " + std::to_string(nextSlot)).c_str());
+        notify(g_macroSlotInMemory == nextSlot ? "GD Bot: active slot " + std::to_string(nextSlot) + " (buffer belongs to this slot)" : "GD Bot: active slot " + std::to_string(nextSlot) + "; use LOAD or PLAY to load its saved macro");
     }
     void onBotRateDown(CCObject*) {
         setBotPlaybackRate(botPlaybackRate() - 0.25f);
@@ -1463,9 +1516,61 @@ public:
         if (m_botRateSprite) m_botRateSprite->setString(botPlaybackRateLabel().c_str());
         notify("GD Bot: playback " + botPlaybackRateLabel().substr(5));
     }
-    void onBotRateInfo(CCObject*) {
-        notify("GD Bot playback rate: " + botPlaybackRateLabel().substr(5) + ". Range 0.25x to 2.00x.");
+    void onBotRateInfo(CCObject*) { notify("GD Bot playback rate: " + botPlaybackRateLabel().substr(5) + ". Range 0.25x to 2.00x."); }
+
+    // SETTINGS tab callbacks retain the same saved values as the old Tools popup.
+    void onSetFPS(CCObject*) { setFPSBypassEnabled(!fpsBypassEnabled()); applyFPSBypass(); refreshSettingsLabels(); notify(std::string("VETER: FPS bypass ") + (fpsBypassEnabled() ? "ON" : "OFF")); }
+    void onFPSDown(CCObject*) { setTargetFPS(targetFPS() - 30); applyFPSBypass(); refreshSettingsLabels(); }
+    void onFPSUp(CCObject*) { setTargetFPS(targetFPS() + 30); applyFPSBypass(); refreshSettingsLabels(); }
+    void onFPSInfo(CCObject*) { notify("FPS target: " + std::to_string(targetFPS()) + ". Actual FPS depends on device/display."); }
+    void onSetRetry(CCObject*) { setAutoRetryEnabled(!autoRetryEnabled()); refreshSettingsLabels(); notify(std::string("VETER: Auto-Retry ") + (autoRetryEnabled() ? "ON" : "OFF")); }
+    void onSetHitboxes(CCObject*) {
+        const bool enabled = !hitboxesEnabled(); setHitboxesEnabled(enabled);
+        if (auto* layer = PlayLayer::get()) { layer->toggleDebugDraw(); g_debugDrawLayer = layer; }
+        refreshSettingsLabels(); notify(enabled ? "VETER: Hitboxes ON" : "VETER: Hitboxes OFF");
     }
+    void onSetCPS(CCObject*) { setCPSEnabled(!cpsEnabled()); if (!cpsEnabled() && g_cpsLabel) g_cpsLabel->setVisible(false); refreshSettingsLabels(); notify(std::string("VETER: CPS ") + (cpsEnabled() ? "ON" : "OFF")); }
+    void onSetPracticeMusic(CCObject*) {
+        auto* layer = PlayLayer::get(); if (!layer) { notify("Practice Music: enter a level first"); return; }
+        const bool enabled = !practiceMusicEnabled(); layer->toggleMusicInPractice(); setPracticeMusicEnabled(enabled); g_practiceMusicLayer = layer;
+        refreshSettingsLabels(); notify(enabled ? "Practice Music ON" : "Practice Music OFF");
+    }
+    void onSetNoclipLimit(CCObject*) { setNoclipLimitEnabled(!noclipLimitEnabled()); refreshSettingsLabels(); notify(std::string("Noclip limit ") + (noclipLimitEnabled() ? "ON" : "OFF")); }
+    void onSetNoclipMax(CCObject*) { int next = noclipMaxDeaths() + 1; if (next > 10) next = 1; setNoclipMaxDeaths(next); refreshSettingsLabels(); notify("Noclip collision limit: " + std::to_string(noclipMaxDeaths())); }
+    void onSetNoDeathEffect(CCObject*) { setNoDeathEffectEnabled(!noDeathEffectEnabled()); refreshSettingsLabels(); notify(std::string("No Death Effect ") + (noDeathEffectEnabled() ? "ON" : "OFF")); }
+    void onSetHitboxesOnDeath(CCObject*) { setHitboxesOnDeathEnabled(!hitboxesOnDeathEnabled()); refreshSettingsLabels(); notify(std::string("Hitboxes on Death ") + (hitboxesOnDeathEnabled() ? "ON" : "OFF")); }
+    void onSetFrameStep(CCObject*) { setFrameStepEnabled(!frameStepEnabled()); g_frameStepPending = false; refreshSettingsLabels(); notify(frameStepEnabled() ? "Frame Step ON: use STEP +1" : "Frame Step OFF"); }
+    void onStepFrame(CCObject*) { if (!frameStepEnabled()) { notify("Turn FRAME STEP ON first"); return; } g_frameStepPending = true; notify("Frame Step: one update queued"); }
+    void onPreviousCheckpoint(CCObject*) { cycleCheckpoint(-1); }
+    void onNextCheckpoint(CCObject*) { cycleCheckpoint(1); }
+    void onSetConfirmExit(CCObject*) { setConfirmExitEnabled(!confirmExitEnabled()); refreshSettingsLabels(); notify(std::string("Confirm Exit ") + (confirmExitEnabled() ? "ON" : "OFF")); }
+    void onSetLayoutMode(CCObject*) { setLayoutModeEnabled(!layoutModeEnabled()); refreshSettingsLabels(); notify(layoutModeEnabled() ? "Layout Mode ON" : "Layout Mode OFF"); }
+    void onFastReset(CCObject*) { auto* layer = PlayLayer::get(); if (!layer) { notify("Fast Reset: enter a level first"); onClose(nullptr); return; } stopBot(false); onClose(nullptr); layer->resetLevel(); }
+
+    // VISUALS tab callbacks share the existing settings and overlay routines.
+    void onToggleTrajectory(CCObject*) {
+        setTrajectoryEnabled(!trajectoryEnabled());
+        if (!trajectoryEnabled() && !trajectoryPredictorEnabled() && g_trajectoryDrawNode) { g_trajectoryDrawNode->removeFromParentAndCleanup(true); g_trajectoryDrawNode = nullptr; g_trajectoryLayer = nullptr; g_trajectoryPoints.clear(); }
+        refreshVisualLabels(); notify(std::string("Position trail ") + (trajectoryEnabled() ? "ON" : "OFF"));
+    }
+    void onTogglePrediction(CCObject*) {
+        setTrajectoryPredictorEnabled(!trajectoryPredictorEnabled());
+        if (!trajectoryEnabled() && !trajectoryPredictorEnabled() && g_trajectoryDrawNode) { g_trajectoryDrawNode->removeFromParentAndCleanup(true); g_trajectoryDrawNode = nullptr; g_trajectoryLayer = nullptr; g_trajectoryPoints.clear(); }
+        refreshVisualLabels(); notify(trajectoryPredictorEnabled() ? "Trajectory prediction ON (approximate)" : "Trajectory prediction OFF");
+    }
+    void onToggleClicks(CCObject*) { setShowClicksEnabled(!showClicksEnabled()); if (!showClicksEnabled() && g_clickLabel) g_clickLabel->setVisible(false); refreshVisualLabels(); notify(std::string("Show Clicks ") + (showClicksEnabled() ? "ON" : "OFF")); }
+    void onToggleFPSCounter(CCObject*) { setFPSCounterEnabled(!fpsCounterEnabled()); if (!fpsCounterEnabled() && g_fpsCounterLabel) g_fpsCounterLabel->setVisible(false); refreshVisualLabels(); notify(std::string("FPS counter ") + (fpsCounterEnabled() ? "ON" : "OFF")); }
+    void onToggleCustomMusic(CCObject*) {
+        if (!customMenuMusicEnabled()) {
+            std::error_code ec;
+            if (!std::filesystem::exists(customMenuMusicFile(), ec) || ec) { notify("Copy custom-menu.mp3 into VETER save folder first"); return; }
+            setCustomMenuMusicEnabled(true);
+        } else setCustomMenuMusicEnabled(false);
+        applyCustomMenuMusic(); refreshVisualLabels(); notify(std::string("Custom menu music ") + (customMenuMusicEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleTransparentPause(CCObject*) { setTransparentPauseEnabled(!transparentPauseEnabled()); refreshVisualLabels(); notify(std::string("Transparent Pause ") + (transparentPauseEnabled() ? "ON (next pause)" : "OFF (next pause)")); }
+    void onToggleHidePause(CCObject*) { setHidePauseButtonEnabled(!hidePauseButtonEnabled()); refreshVisualLabels(); notify(std::string("Hide Pause Button ") + (hidePauseButtonEnabled() ? "ON" : "OFF")); }
+    void onMusicInfo(CCObject*) { const auto path = customMenuMusicFile().string(); FLAlertLayer::create("Custom Menu Music", ("Place your own MP3 file here:\n" + path + "\nThen turn MENU MUSIC ON from the Visuals tab.").c_str(), "OK")->show(); }
 };
 
 class VETERToolsPopup : public Popup {
@@ -1752,7 +1857,7 @@ private:
 
 protected:
     bool init() {
-        if (!Popup::init(380.f, 365.f)) return false;
+        if (!Popup::init(350.f, 295.f)) return false;
         setTitle("VETER - Unlocks");
         auto* menu = CCMenu::create();
         if (!menu || !m_mainLayer) return false;
@@ -1768,23 +1873,23 @@ protected:
             menu->addChild(item);
             return sprite;
         };
-        const float left = size.width * 0.36f;
+        const float left = size.width * 0.25f;
         const float center = size.width * 0.50f;
-        const float right = size.width * 0.64f;
-        m_unlockAllSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleUnlockAll), center, size.height - 58.f,
+        const float right = size.width * 0.75f;
+        m_unlockAllSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleUnlockAll), center, size.height - 50.f,
             unlockAllEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_iconKitSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleIconKit), left, size.height - 112.f,
+        m_iconKitSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleIconKit), left, size.height - 90.f,
             iconKitBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_mainLevelsSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleMainLevels), right, size.height - 112.f,
+        m_mainLevelsSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleMainLevels), right, size.height - 90.f,
             mainLevelsBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_shopSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleShop), left, size.height - 166.f,
+        m_shopSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleShop), left, size.height - 130.f,
             shopUnlockBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_vaultSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleVault), right, size.height - 166.f,
+        m_vaultSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleVault), right, size.height - 130.f,
             vaultBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_textLengthSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleTextLength), center, size.height - 220.f,
+        m_textLengthSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleTextLength), center, size.height - 170.f,
             textLengthBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        addButton("INFO", menu_selector(VETERUnlockPopup::onInfo), left, size.height - 275.f, "GJ_button_01.png");
-        addButton("BACK", menu_selector(VETERUnlockPopup::onBack), right, size.height - 275.f, "GJ_button_01.png");
+        addButton("INFO", menu_selector(VETERUnlockPopup::onInfo), left, size.height - 215.f, "GJ_button_01.png");
+        addButton("BACK", menu_selector(VETERUnlockPopup::onBack), right, size.height - 215.f, "GJ_button_01.png");
         refreshLabels();
         return true;
     }
@@ -1832,7 +1937,7 @@ void VETERToolsPopup::onUnlocks(CCObject*) {
 
 void VETERUnlockPopup::onBack(CCObject*) {
     onClose(nullptr);
-    if (auto* popup = VETERToolsPopup::create()) popup->show();
+    if (auto* popup = VETERPopup::create()) popup->show();
 }
 
 void VETERPopup::onMore(CCObject*) {
@@ -2004,19 +2109,19 @@ private:
 
 protected:
     bool init() {
-        if (!Popup::init(400.f, 450.f)) return false;
+        if (!Popup::init(350.f, 315.f)) return false;
         setTitle("VETER - Editor");
         auto* menu = CCMenu::create();
         if (!menu || !m_mainLayer) return false;
         menu->setPosition({0.f, 0.f});
         m_mainLayer->addChild(menu);
         const auto size = m_mainLayer->getContentSize();
-        const float left = size.width * 0.35f;
+        const float left = size.width * 0.25f;
         const float center = size.width * 0.50f;
-        const float right = size.width * 0.65f;
+        const float right = size.width * 0.75f;
         auto addButton = [&](const std::string& text, SEL_MenuHandler selector,
                              float x, float y, const char* frame) -> ButtonSprite* {
-            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, 0.29f);
+            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, 0.23f);
             if (!sprite) return nullptr;
             auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
             if (!item) return nullptr;
@@ -2024,12 +2129,15 @@ protected:
             menu->addChild(item);
             return sprite;
         };
-        const float row1 = size.height - 54.f;
-        const float row2 = size.height - 98.f;
-        const float row3 = size.height - 142.f;
-        const float row4 = size.height - 186.f;
-        const float row5 = size.height - 230.f;
-        const float row6 = size.height - 274.f;
+        const float row1 = size.height - 48.f;
+        const float row2 = size.height - 79.f;
+        const float row3 = size.height - 110.f;
+        const float row4 = size.height - 141.f;
+        const float row5 = size.height - 172.f;
+        const float row6 = size.height - 203.f;
+        const float row7 = size.height - 234.f;
+        const float row8 = size.height - 265.f;
+        const float row9 = 28.f;
         addButton("X -", menu_selector(VETEREditorPopup::onXMinus), left, row1, "GJ_button_01.png");
         addButton("X +", menu_selector(VETEREditorPopup::onXPlus), right, row1, "GJ_button_01.png");
         addButton("Y -", menu_selector(VETEREditorPopup::onYMinus), left, row2, "GJ_button_01.png");
@@ -2041,11 +2149,11 @@ protected:
         addButton("SCALE -", menu_selector(VETEREditorPopup::onScaleMinus), left, row5, "GJ_button_01.png");
         addButton("SCALE +", menu_selector(VETEREditorPopup::onScalePlus), right, row5, "GJ_button_01.png");
         m_moveStepSprite = addButton("MOVE STEP 1.0", menu_selector(VETEREditorPopup::onCycleMoveStep), center, row6, "GJ_button_02.png");
-        addButton("ABSOLUTE X/Y", menu_selector(VETEREditorPopup::onAbsolutePosition), center, size.height - 322.f, "GJ_button_02.png");
-        addButton("COPY XFORM", menu_selector(VETEREditorPopup::onCopyTransform), left, size.height - 365.f, "GJ_button_01.png");
-        addButton("PASTE XFORM", menu_selector(VETEREditorPopup::onPasteTransform), right, size.height - 365.f, "GJ_button_01.png");
-        addButton("INFO", menu_selector(VETEREditorPopup::onInfo), left, 36.f, "GJ_button_01.png");
-        addButton("BACK", menu_selector(VETEREditorPopup::onBack), right, 36.f, "GJ_button_01.png");
+        addButton("ABSOLUTE X/Y", menu_selector(VETEREditorPopup::onAbsolutePosition), center, row7, "GJ_button_02.png");
+        addButton("COPY XFORM", menu_selector(VETEREditorPopup::onCopyTransform), left, row8, "GJ_button_01.png");
+        addButton("PASTE XFORM", menu_selector(VETEREditorPopup::onPasteTransform), right, row8, "GJ_button_01.png");
+        addButton("INFO", menu_selector(VETEREditorPopup::onInfo), left, row9, "GJ_button_01.png");
+        addButton("BACK", menu_selector(VETEREditorPopup::onBack), right, row9, "GJ_button_01.png");
         refreshLabels();
         return true;
     }
@@ -2128,7 +2236,7 @@ public:
     }
     void onBack(CCObject*) {
         onClose(nullptr);
-        if (auto* popup = VETERToolsPopup::create()) popup->show();
+        if (auto* popup = VETERPopup::create()) popup->show();
     }
 };
 
@@ -2270,9 +2378,19 @@ public:
     }
     void onBack(CCObject*) {
         onClose(nullptr);
-        if (auto* popup = VETERToolsPopup::create()) popup->show();
+        if (auto* popup = VETERPopup::create()) popup->show();
     }
 };
+
+void VETERPopup::onOpenEditor(CCObject*) {
+    onClose(nullptr);
+    if (auto* popup = VETEREditorPopup::create()) popup->show();
+}
+
+void VETERPopup::onOpenUnlocks(CCObject*) {
+    onClose(nullptr);
+    if (auto* popup = VETERUnlockPopup::create()) popup->show();
+}
 
 void VETERToolsPopup::onEditor(CCObject*) {
     onClose(nullptr);
@@ -2307,11 +2425,18 @@ namespace {
 
         auto* menu = CCMenu::create();
         auto* delegate = VETEROpenDelegate::create();
-        auto* sprite = ButtonSprite::create("MSP", "bigFont.fnt", "GJ_button_01.png", 0.75f);
-        if (!menu || !delegate || !sprite) return;
+        auto iconPath = (Mod::get()->getResourcesDir() / "icon.png").string();
+        auto* iconSprite = CCSprite::create(iconPath.c_str());
+        CCNode* buttonVisual = iconSprite;
+        if (iconSprite) {
+            iconSprite->setScale(0.10f);
+        } else {
+            buttonVisual = ButtonSprite::create("VETER", "bigFont.fnt", "GJ_button_01.png", 0.55f);
+        }
+        if (!menu || !delegate || !buttonVisual) return;
 
         auto* item = CCMenuItemSpriteExtra::create(
-            sprite, delegate, menu_selector(VETEROpenDelegate::onOpen)
+            buttonVisual, delegate, menu_selector(VETEROpenDelegate::onOpen)
         );
         if (!item) return;
 
@@ -2606,5 +2731,5 @@ $on_mod(Loaded) {
     applyFPSBypass();
     if (musicMuted()) applyMusicMute();
     applyMusicPitch();
-    log::info("VETER v1.2.0 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
+    log::info("VETER v1.2.2 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
 }
