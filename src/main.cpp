@@ -5,7 +5,6 @@
 #include <Geode/modify/PlayerObject.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/GameStatsManager.hpp>
-#include <Geode/modify/CCTextInputNode.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -522,20 +521,11 @@ namespace {
     }
 
     void applyMusicPitch() {
-        auto* audio = FMODAudioEngine::sharedEngine();
-        if (!audio) return;
-
-        // Music speed is independent from the mute toggle. Use the active
-        // Geometry Dash music channel and restore normal pitch when sync is off.
-        float pitch = 1.0f;
-        if (PlayLayer::get() && speedhackEnabled() && musicSpeedSyncEnabled()) {
-            pitch = speedMultiplier();
-        }
-
-        const int musicChannel = audio->getMusicChannelID(0);
-        if (musicChannel >= 0) {
-            audio->setChannelPitch(musicChannel, AudioTargetType::Music, pitch);
-        }
+        // Geode SDK 5.11.2 bindings do not expose the required music target enum in the
+        // bindings used by this build. Keep the function as a compatibility
+        // placeholder so music mute and the rest of the mod compile. Music
+        // pitch synchronization needs a supported channel API before it can
+        // be enabled safely.
     }
 
     void setMusicSpeedSyncEnabled(bool enabled) {
@@ -1357,8 +1347,9 @@ protected:
         m_yInput->setPosition({size.width * 0.72f, size.height - 82.f});
         m_xInput->setDelegate(this);
         m_yInput->setDelegate(this);
-        m_xInput->setMaxLabelLength(16);
-        m_yInput->setMaxLabelLength(16);
+        const int maxTextLength = textLengthBypassEnabled() ? 1000000 : 16;
+        m_xInput->setMaxLabelLength(maxTextLength);
+        m_yInput->setMaxLabelLength(maxTextLength);
         m_xInput->setString("0");
         m_yInput->setString("0");
         m_mainLayer->addChild(m_xInput, 3);
@@ -1757,12 +1748,6 @@ class $modify(MegaSoftPulseGameStats, GameStatsManager) {
     bool isSpecialChestUnlocked(gd::string id) {
         if (vaultBypassEnabled() || unlockAllEnabled()) return true;
         return GameStatsManager::isSpecialChestUnlocked(id);
-    }
-};
-
-class $modify(MegaSoftPulseTextInputNode, CCTextInputNode) {
-    void setMaxLabelLength(int length) {
-        CCTextInputNode::setMaxLabelLength(textLengthBypassEnabled() ? 1000000 : length);
     }
 };
 
