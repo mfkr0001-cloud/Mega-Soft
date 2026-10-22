@@ -6,9 +6,9 @@
   },
   "id": "dev.chatgpt.gdtools",
   "name": "VETER",
-  "version": "1.2.3",
+  "version": "1.2.5",
   "developer": "VETER",
-  "description": "VETER: Geometry Dash 2.2 tools with a compact four-tab menu (Player, GD Bot, Visuals, Settings) with a visible main-menu button, multi-slot macro recording/playback/Continue, speed controls, overlays, editor transform helpers and local unlock checks. Some advanced bypasses are not implemented.",
+  "description": "VETER: Geometry Dash 2.2 tools with a compact four-tab menu, GD Bot recording/playback, persistent Speedhack/music sync, touch input macro capture with autosave, FPS and visual overlays, editor helpers and local unlock checks.",
   "tags": [
     "gameplay",
     "offline",
