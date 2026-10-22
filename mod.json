@@ -6,7 +6,7 @@
     },
     "id": "dev.chatgpt.gdtools",
     "name": "MegaSoft Pulse",
-    "version": "1.1.8",
+    "version": "1.2.0",
     "developer": "MegaSoft Pulse",
     "description": "MegaSoft Pulse: Geometry Dash 2.2 tools for gameplay, practice, overlays, safer multi-slot GD Bot macro saving/loading with loop and playback rate, music pitch sync, editor transform helpers, custom menu music and local unlock checks. Some advanced Mega Hack bypasses are not implemented. GD Bot Continue replays a saved macro in Practice Mode and appends new recorded inputs without clearing the old events.",
     "tags": [
@@ -214,3 +214,4 @@
         }
     }
 }
+
