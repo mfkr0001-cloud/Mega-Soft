@@ -5,8 +5,10 @@
 #include <Geode/modify/PlayerObject.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/modify/GameStatsManager.hpp>
+#include <Geode/modify/FMODAudioEngine.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -15,6 +17,7 @@
 #include <string>
 #include <system_error>
 #include <sstream>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -23,6 +26,7 @@ using namespace geode::prelude;
 namespace {
     constexpr int kMegaSoftPulseButtonTag = 0x4D534831;
     constexpr std::size_t kMaxMacroEvents = 500000;
+    constexpr double kMaxMacroDurationSeconds = 24.0 * 60.0 * 60.0;
 
     bool autoRetryEnabled() {
         return Mod::get()->getSavedValue<bool>("auto-retry-enabled", false);
@@ -44,6 +48,12 @@ namespace {
         value = std::clamp(value, 60, 360);
         value = ((value + 15) / 30) * 30;
         Mod::get()->setSavedValue("fps-target", std::clamp(value, 60, 360));
+    }
+    bool fpsCounterEnabled() {
+        return Mod::get()->getSavedValue<bool>("fps-counter-enabled", false);
+    }
+    void setFPSCounterEnabled(bool enabled) {
+        Mod::get()->setSavedValue("fps-counter-enabled", enabled);
     }
     bool hitboxesEnabled() {
         return Mod::get()->getSavedValue<bool>("hitboxes-enabled", false);
@@ -142,6 +152,12 @@ namespace {
     void setTrajectoryEnabled(bool enabled) {
         Mod::get()->setSavedValue("trajectory-enabled", enabled);
     }
+    bool trajectoryPredictorEnabled() {
+        return Mod::get()->getSavedValue<bool>("trajectory-predictor-enabled", false);
+    }
+    void setTrajectoryPredictorEnabled(bool enabled) {
+        Mod::get()->setSavedValue("trajectory-predictor-enabled", enabled);
+    }
     bool showClicksEnabled() {
         return Mod::get()->getSavedValue<bool>("show-clicks-enabled", false);
     }
@@ -180,6 +196,12 @@ namespace {
     int g_cpsInputCount = 0;
     int g_currentCPS = 0;
     double g_cpsWindowElapsed = 0.0;
+    PlayLayer* g_fpsCounterLayer = nullptr;
+    CCLabelBMFont* g_fpsCounterLabel = nullptr;
+    std::chrono::steady_clock::time_point g_fpsWindowStart{};
+    int g_fpsWindowFrames = 0;
+    double g_measuredGameFPS = 0.0;
+    bool g_fpsWindowStarted = false;
     PlayLayer* g_cpsLayer = nullptr;
     CCLabelBMFont* g_cpsLabel = nullptr;
     PlayLayer* g_noclipStatusLayer = nullptr;
@@ -203,6 +225,14 @@ namespace {
     float g_clickFlashRemaining = 0.f;
     std::string g_customMenuMusicPath;
     bool g_customMenuMusicApplied = false;
+    // Remembers that custom music replaced the menu track, even while a level is active.
+    // This lets us restore menuLoop.mp3 if the toggle is turned off during gameplay.
+    bool g_customMenuMusicNeedsRestore = false;
+    // Track the game's requested pitch separately from our speed multiplier.
+    // This prevents a speed change from erasing pitch changes requested by the level.
+    std::unordered_map<int, float> g_musicBasePitchByChannel;
+    std::unordered_map<int, float> g_musicAppliedPitchByChannel;
+    bool g_settingMusicPitch = false;
 
     void applyFPSBypass() {
         auto* director = CCDirector::sharedDirector();
@@ -252,6 +282,52 @@ namespace {
             g_currentCPS = g_cpsInputCount;
             g_cpsInputCount = 0;
             g_cpsWindowElapsed = 0.0;
+        }
+    }
+
+    void updateFPSCounterOverlay(PlayLayer* layer) {
+        if (!layer) return;
+        if (g_fpsCounterLayer != layer) {
+            // Do not touch a label owned by a PlayLayer that may already be destroyed.
+            g_fpsCounterLayer = layer;
+            g_fpsCounterLabel = nullptr;
+            g_fpsWindowFrames = 0;
+            g_measuredGameFPS = 0.0;
+            g_fpsWindowStarted = false;
+        }
+        if (!fpsCounterEnabled()) {
+            if (g_fpsCounterLabel) g_fpsCounterLabel->setVisible(false);
+            return;
+        }
+        if (!g_fpsCounterLabel) {
+            g_fpsCounterLabel = CCLabelBMFont::create("GAME FPS 0", "chatFont.fnt");
+            if (g_fpsCounterLabel) {
+                const auto size = CCDirector::sharedDirector()->getWinSize();
+                g_fpsCounterLabel->setAnchorPoint({0.f, 1.f});
+                g_fpsCounterLabel->setPosition({12.f, size.height - 56.f});
+                g_fpsCounterLabel->setScale(0.46f);
+                layer->addChild(g_fpsCounterLabel, 9998);
+            }
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (!g_fpsWindowStarted) {
+            g_fpsWindowStart = now;
+            g_fpsWindowFrames = 0;
+            g_fpsWindowStarted = true;
+        }
+        ++g_fpsWindowFrames;
+        const double elapsed = std::chrono::duration<double>(now - g_fpsWindowStart).count();
+        if (elapsed >= 0.5) {
+            g_measuredGameFPS = elapsed > 0.0 ? static_cast<double>(g_fpsWindowFrames) / elapsed : 0.0;
+            g_fpsWindowFrames = 0;
+            g_fpsWindowStart = now;
+        }
+        if (g_fpsCounterLabel) {
+            char text[40];
+            std::snprintf(text, sizeof(text), "GAME FPS %.0f", g_measuredGameFPS);
+            g_fpsCounterLabel->setString(text);
+            g_fpsCounterLabel->setVisible(true);
         }
     }
 
@@ -361,7 +437,9 @@ namespace {
 
     void updateTrajectoryTrail(PlayLayer* layer) {
         if (!layer) return;
-        if (!trajectoryEnabled()) {
+        const bool showTrail = trajectoryEnabled();
+        const bool showPrediction = trajectoryPredictorEnabled();
+        if (!showTrail && !showPrediction) {
             if (g_trajectoryDrawNode) g_trajectoryDrawNode->removeFromParentAndCleanup(true);
             g_trajectoryDrawNode = nullptr;
             g_trajectoryLayer = nullptr;
@@ -378,15 +456,52 @@ namespace {
             }
         }
         if (!g_trajectoryDrawNode || !layer->m_player1) return;
-        g_trajectoryPoints.push_back(layer->m_player1->getPosition());
-        // Keep a bounded, recent path so long levels do not allocate forever.
+
+        const CCPoint current = layer->m_player1->getPosition();
+        // Discard history after a teleport, restart, or large camera/physics discontinuity.
+        if (!g_trajectoryPoints.empty()) {
+            const auto previous = g_trajectoryPoints.back();
+            if (std::hypot(current.x - previous.x, current.y - previous.y) > 180.f) {
+                g_trajectoryPoints.clear();
+            }
+        }
+        g_trajectoryPoints.push_back(current);
         if (g_trajectoryPoints.size() > 72) g_trajectoryPoints.erase(g_trajectoryPoints.begin());
         g_trajectoryDrawNode->clear();
-        const ccColor4F trailColor = {0.10f, 0.88f, 1.0f, 0.78f};
-        for (std::size_t i = 1; i < g_trajectoryPoints.size(); ++i) {
-            const float fade = static_cast<float>(i) / static_cast<float>(g_trajectoryPoints.size());
-            const ccColor4F color = {trailColor.r, trailColor.g, trailColor.b, trailColor.a * fade};
-            g_trajectoryDrawNode->drawSegment(g_trajectoryPoints[i - 1], g_trajectoryPoints[i], 2.1f, color);
+
+        if (showTrail && g_trajectoryPoints.size() >= 2) {
+            const ccColor4F trailColor = {0.10f, 0.88f, 1.0f, 0.78f};
+            for (std::size_t i = 1; i < g_trajectoryPoints.size(); ++i) {
+                const float fade = static_cast<float>(i) / static_cast<float>(g_trajectoryPoints.size());
+                const ccColor4F color = {trailColor.r, trailColor.g, trailColor.b, trailColor.a * fade};
+                g_trajectoryDrawNode->drawSegment(g_trajectoryPoints[i - 1], g_trajectoryPoints[i], 2.1f, color);
+            }
+        }
+
+        // This is an extrapolation of recent movement, not a full physics simulation:
+        // triggers, collisions, gravity changes, portals, and mode switches can invalidate it.
+        if (showPrediction && g_trajectoryPoints.size() >= 3) {
+            const std::size_t count = g_trajectoryPoints.size();
+            const CCPoint p0 = g_trajectoryPoints[count - 3];
+            const CCPoint p1 = g_trajectoryPoints[count - 2];
+            const CCPoint p2 = g_trajectoryPoints[count - 1];
+            float vx = std::clamp(p2.x - p1.x, -80.f, 80.f);
+            float vy = std::clamp(p2.y - p1.y, -80.f, 80.f);
+            const float ax = std::clamp((p2.x - p1.x) - (p1.x - p0.x), -8.f, 8.f);
+            const float ay = std::clamp((p2.y - p1.y) - (p1.y - p0.y), -8.f, 8.f);
+            CCPoint previous = p2;
+            const ccColor4F predictionColor = {1.0f, 0.48f, 0.12f, 0.78f};
+            for (int step = 1; step <= 14; ++step) {
+                vx = std::clamp(vx + ax * 0.35f, -80.f, 80.f);
+                vy = std::clamp(vy + ay * 0.35f, -80.f, 80.f);
+                CCPoint next = {previous.x + vx, previous.y + vy};
+                if (!std::isfinite(next.x) || !std::isfinite(next.y)) break;
+                // Short alternating segments distinguish the forecast from the actual trail.
+                if ((step % 2) == 1) {
+                    g_trajectoryDrawNode->drawSegment(previous, next, 1.5f, predictionColor);
+                }
+                previous = next;
+            }
         }
     }
 
@@ -432,22 +547,34 @@ namespace {
         auto* audio = FMODAudioEngine::sharedEngine();
         if (!audio) return;
         if (PlayLayer::get()) {
+            // The level owns music playback now, but remember whether a custom
+            // menu track will need to be restored when returning to the menu.
             g_customMenuMusicApplied = false;
             return;
         }
+
         if (customMenuMusicEnabled()) {
             const auto path = customMenuMusicFile();
             std::error_code ec;
-            if (!std::filesystem::exists(path, ec) || ec) return;
-            const auto nativePath = path.string();
-            if (!g_customMenuMusicApplied || g_customMenuMusicPath != nativePath) {
-                audio->playMusic(gd::string(nativePath.c_str()), true, 0.35f, 0);
-                g_customMenuMusicPath = nativePath;
-                g_customMenuMusicApplied = true;
+            const bool exists = std::filesystem::exists(path, ec) && !ec;
+            if (exists) {
+                const auto nativePath = path.string();
+                if (!g_customMenuMusicApplied || g_customMenuMusicPath != nativePath) {
+                    audio->playMusic(gd::string(nativePath.c_str()), true, 0.35f, 0);
+                    g_customMenuMusicPath = nativePath;
+                    g_customMenuMusicApplied = true;
+                    g_customMenuMusicNeedsRestore = true;
+                }
+                return;
             }
-        } else if (g_customMenuMusicApplied) {
+        }
+
+        // Restore the stock menu loop if custom music was used before the last
+        // level transition, including when the toggle was disabled in gameplay.
+        if (g_customMenuMusicApplied || g_customMenuMusicNeedsRestore) {
             audio->playMusic("menuLoop.mp3", true, 0.35f, 0);
             g_customMenuMusicApplied = false;
+            g_customMenuMusicNeedsRestore = false;
             g_customMenuMusicPath.clear();
         }
     }
@@ -464,7 +591,7 @@ namespace {
         }
     }
 
-    enum class BotMode { Idle, Recording, Playing };
+    enum class BotMode { Idle, Recording, Playing, Continuing };
 
     struct BotEvent {
         double time = 0.0;
@@ -478,7 +605,15 @@ namespace {
     double g_botClock = 0.0;
     std::size_t g_playIndex = 0;
     int g_macroLevelID = 0;
+    PlayLayer* g_botLayer = nullptr;
     bool g_injectedInput = false;
+    // True from Continue start until the appended recording is saved or cancelled.
+    bool g_botContinueSession = false;
+    bool g_botContinueHandoffPending = false;
+    bool g_botClockAdvancedThisFrame = false;
+
+    bool saveMacro();
+    bool finalizeContinueSession();
 
     bool noclipEnabled() {
         return Mod::get()->getSavedValue<bool>("noclip-enabled", false);
@@ -520,18 +655,45 @@ namespace {
         return Mod::get()->getSavedValue<bool>("music-speed-sync", true);
     }
 
+    float musicPitchScale() {
+        if (!PlayLayer::get() || !speedhackEnabled() || !musicSpeedSyncEnabled()) return 1.0f;
+        return speedMultiplier();
+    }
+
     void applyMusicPitch() {
-        // Geode SDK 5.11.2 bindings do not expose the required music target enum in the
-        // bindings used by this build. Keep the function as a compatibility
-        // placeholder so music mute and the rest of the mod compile. Music
-        // pitch synchronization needs a supported channel API before it can
-        // be enabled safely.
+        auto* audio = FMODAudioEngine::sharedEngine();
+        if (!audio) return;
+
+        // Music ID 0 is the standard level music channel used by Geometry Dash.
+        // A missing channel is normal while menus/loading screens are active.
+        const int channel = audio->getMusicChannelID(0);
+        if (channel < 0) return;
+
+        auto baseIt = g_musicBasePitchByChannel.find(channel);
+        const float basePitch = baseIt != g_musicBasePitchByChannel.end() &&
+            std::isfinite(baseIt->second) && baseIt->second > 0.0f
+                ? baseIt->second : 1.0f;
+        const float desiredPitch = std::clamp(basePitch * musicPitchScale(), 0.05f, 10.0f);
+
+        auto appliedIt = g_musicAppliedPitchByChannel.find(channel);
+        if (appliedIt != g_musicAppliedPitchByChannel.end() &&
+            std::isfinite(appliedIt->second) && std::abs(appliedIt->second - desiredPitch) < 0.001f) {
+            return;
+        }
+
+        // The FMOD hook below recognizes this as our own write and won't mistake
+        // the multiplied value for the game's original/base pitch.
+        g_settingMusicPitch = true;
+        audio->setChannelPitch(channel, AudioTargetType::MusicChannel, desiredPitch);
+        g_settingMusicPitch = false;
+        g_musicAppliedPitchByChannel[channel] = desiredPitch;
     }
 
     void setMusicSpeedSyncEnabled(bool enabled) {
         Mod::get()->setSavedValue("music-speed-sync", enabled);
         applyMusicPitch();
-        notify(std::string("MegaSoft Pulse: music speed sync ") + (enabled ? "ON" : "OFF"));
+        notify(std::string("MegaSoft Pulse: music speed sync ") +
+            (enabled ? "ON (with Speedhack)" : "OFF"));
     }
 
     void applyMusicMute() {
@@ -574,8 +736,39 @@ namespace {
         return layer && layer->m_level ? layer->m_level->m_levelID : 0;
     }
 
+    bool botLoopEnabled() {
+        return Mod::get()->getSavedValue<bool>("gdbot-loop-enabled", false);
+    }
+    void setBotLoopEnabled(bool enabled) {
+        Mod::get()->setSavedValue("gdbot-loop-enabled", enabled);
+    }
+    float botPlaybackRate() {
+        float value = Mod::get()->getSavedValue<float>("gdbot-playback-rate", 1.0f);
+        if (!std::isfinite(value)) value = 1.0f;
+        return std::clamp(std::round(value * 4.0f) / 4.0f, 0.25f, 2.0f);
+    }
+    void setBotPlaybackRate(float value) {
+        if (!std::isfinite(value)) value = 1.0f;
+        value = std::round(value * 4.0f) / 4.0f;
+        Mod::get()->setSavedValue("gdbot-playback-rate", std::clamp(value, 0.25f, 2.0f));
+    }
+    int botMacroSlot() {
+        return std::clamp(Mod::get()->getSavedValue<int>("gdbot-active-slot", 1), 1, 3);
+    }
+    void setBotMacroSlot(int slot) {
+        Mod::get()->setSavedValue("gdbot-active-slot", std::clamp(slot, 1, 3));
+    }
+    std::string botPlaybackRateLabel() {
+        char buffer[32];
+        std::snprintf(buffer, sizeof(buffer), "RATE %.2fx", static_cast<double>(botPlaybackRate()));
+        return buffer;
+    }
     std::filesystem::path macroPath() {
-        return Mod::get()->getSaveDir() / "gdbot.gdm";
+        const int slot = botMacroSlot();
+        // Slot 1 deliberately retains the original filename for backward compatibility.
+        std::string filename = "gdbot.gdm";
+        if (slot > 1) filename = "gdbot-slot" + std::to_string(slot) + ".gdm";
+        return Mod::get()->getSaveDir() / filename;
     }
 
     void injectBotInput(PlayLayer* layer, int button, bool down) {
@@ -588,31 +781,34 @@ namespace {
     }
 
     void releasePlaybackButtons() {
-        auto* layer = PlayLayer::get();
-        if (!layer || !layer->m_player1) {
+        auto* currentLayer = PlayLayer::get();
+        // Only send releases to the exact PlayLayer that started playback. A level
+        // transition can destroy that layer, so never send old button-up events to
+        // a new level just because it happens to be the current PlayLayer.
+        if (!g_botLayer || currentLayer != g_botLayer || !g_botLayer->m_player1) {
             g_playbackHeldButtons.clear();
             return;
         }
 
         for (const int value : g_playbackHeldButtons) {
-            injectBotInput(layer, value, false);
+            injectBotInput(g_botLayer, value, false);
         }
         g_playbackHeldButtons.clear();
     }
 
     void stopBot(bool showNotification = true) {
         const auto oldMode = g_botMode;
-        if (oldMode == BotMode::Idle) return;
-
+        if (oldMode == BotMode::Playing || oldMode == BotMode::Continuing) releasePlaybackButtons();
         g_botMode = BotMode::Idle;
-        if (oldMode == BotMode::Playing) releasePlaybackButtons();
+        g_botLayer = nullptr;
+        g_botContinueHandoffPending = false;
+        g_botClockAdvancedThisFrame = false;
 
-        if (showNotification) {
-            if (oldMode == BotMode::Recording) {
-                notify("GD Bot: recording stopped");
-            } else {
-                notify("GD Bot: playback stopped");
-            }
+        if (!showNotification || oldMode == BotMode::Idle) return;
+        if (oldMode == BotMode::Recording) {
+            notify("GD Bot: recording stopped");
+        } else {
+            notify("GD Bot: playback stopped");
         }
     }
 
@@ -620,65 +816,120 @@ namespace {
         if (g_botMode != BotMode::Recording || g_injectedInput) return;
         auto* layer = PlayLayer::get();
         if (!layer || !layer->m_player1) return;
+        if (layer != g_botLayer) {
+            if (g_botContinueSession) finalizeContinueSession();
+            else stopBot(false);
+            notify("GD Bot: recording stopped because the level changed");
+            return;
+        }
         if (button < 0 || button > 32) return;
         if (g_events.size() >= kMaxMacroEvents) {
-            stopBot(false);
+            if (g_botContinueSession) finalizeContinueSession();
+            else stopBot(false);
             notify("GD Bot: event limit reached; recording stopped");
             return;
         }
         g_events.push_back({g_botClock, button, pressed});
     }
 
-    void saveMacro() {
+    bool saveMacro() {
         if (g_botMode == BotMode::Recording) stopBot(false);
         if (g_events.empty()) {
             notify("GD Bot: nothing recorded yet");
-            return;
+            return false;
+        }
+        if (g_events.size() > kMaxMacroEvents) {
+            notify("GD Bot: macro exceeds the event limit");
+            return false;
+        }
+        double previousTime = 0.0;
+        for (const auto& event : g_events) {
+            if (!std::isfinite(event.time) || event.time < previousTime ||
+                event.time > kMaxMacroDurationSeconds || event.button < 0 || event.button > 32) {
+                notify("GD Bot: macro data is invalid; not saved");
+                return false;
+            }
+            previousTime = event.time;
         }
 
         const auto path = macroPath();
+        auto tempPath = path;
+        tempPath += ".tmp";
         std::error_code error;
         std::filesystem::create_directories(path.parent_path(), error);
         if (error) {
             log::error("GD Bot: could not create save folder: {}", error.message());
             notify("GD Bot: could not create save folder");
-            return;
+            return false;
         }
+        std::filesystem::remove(tempPath, error);
+        error.clear();
 
-        std::ofstream file(path, std::ios::trunc);
+        std::ofstream file(tempPath, std::ios::trunc);
         if (!file) {
-            notify("GD Bot: could not open the save file");
-            return;
+            notify("GD Bot: could not open the temporary save file");
+            return false;
         }
-
         file << "GDBOT1\n" << g_macroLevelID << '\n';
         file.precision(8);
         for (const auto& event : g_events) {
             file << event.time << ' ' << (event.pressed ? 1 : 0) << ' ' << event.button << '\n';
         }
+        file.flush();
+        const bool writeOk = file.good();
         file.close();
-
-        if (!file) {
-            notify("GD Bot: saving failed");
-            return;
+        if (!writeOk || file.fail()) {
+            std::filesystem::remove(tempPath, error);
+            notify("GD Bot: saving failed; previous macro kept");
+            return false;
         }
-        log::info("GD Bot: saved {} input events", g_events.size());
-        notify("GD Bot: macro saved");
+
+        // Rename only after the complete file is written, so an interrupted save
+        // cannot truncate the previous valid macro.
+        error.clear();
+        std::filesystem::rename(tempPath, path, error);
+        if (error) {
+            std::error_code cleanupError;
+            std::filesystem::remove(tempPath, cleanupError);
+            log::error("GD Bot: could not replace macro file: {}", error.message());
+            notify("GD Bot: could not replace macro file; previous macro kept");
+            return false;
+        }
+        log::info("GD Bot: saved {} input events to slot {}", g_events.size(), botMacroSlot());
+        notify("GD Bot: macro saved to slot " + std::to_string(botMacroSlot()));
+        return true;
     }
 
-    void loadMacro() {
+    // Stop a Continue session and persist the combined old + newly recorded events.
+    // saveMacro writes through a temporary file, so an unsuccessful save preserves the
+    // previous on-disk macro and the user can retry saving.
+    bool finalizeContinueSession() {
+        if (!g_botContinueSession) return true;
+        if (g_botMode != BotMode::Idle) stopBot(false);
+        if (!saveMacro()) {
+            notify("GD Bot: could not save Continue session; original macro file is kept");
+            return false;
+        }
+        g_botContinueSession = false;
+        notify("GD Bot: Continue session saved; previous inputs were preserved");
+        return true;
+    }
+
+    bool loadMacro() {
         stopBot(false);
+        // Keep the current in-memory macro until the selected file is fully
+        // validated. A missing/corrupt slot must not destroy a good recording.
         std::ifstream file(macroPath());
         if (!file) {
-            notify("GD Bot: saved macro not found");
-            return;
+            notify("GD Bot: saved macro not found; current macro kept");
+            return false;
         }
 
         std::string signature;
         int levelID = 0;
         if (!(file >> signature >> levelID) || signature != "GDBOT1") {
-            notify("GD Bot: invalid macro file");
-            return;
+            notify("GD Bot: invalid macro file; current macro kept");
+            return false;
         }
 
         std::vector<BotEvent> loaded;
@@ -689,18 +940,23 @@ namespace {
 
         while (file >> timestamp >> pressed >> button) {
             if (!std::isfinite(timestamp) || timestamp < 0.0 || timestamp < previousTimestamp ||
+                timestamp > kMaxMacroDurationSeconds ||
                 (pressed != 0 && pressed != 1) || button < 0 || button > 32 ||
                 loaded.size() >= kMaxMacroEvents) {
-                notify("GD Bot: invalid or oversized macro");
-                return;
+                notify("GD Bot: invalid or oversized macro; current macro kept");
+                return false;
             }
             loaded.push_back({timestamp, button, pressed != 0});
             previousTimestamp = timestamp;
         }
 
+        if (!file.eof()) {
+            notify("GD Bot: malformed macro data; current macro kept");
+            return false;
+        }
         if (loaded.empty()) {
-            notify("GD Bot: macro contains no inputs");
-            return;
+            notify("GD Bot: macro contains no inputs; current macro kept");
+            return false;
         }
 
         g_events = std::move(loaded);
@@ -709,10 +965,17 @@ namespace {
         g_playIndex = 0;
         log::info("GD Bot: loaded {} input events", g_events.size());
         notify("GD Bot: macro loaded");
+        return true;
     }
 
     void processPlayback(PlayLayer* layer) {
-        if (g_botMode != BotMode::Playing || !layer || !layer->m_player1) return;
+        if ((g_botMode != BotMode::Playing && g_botMode != BotMode::Continuing) || !layer || !layer->m_player1) return;
+        if (layer != g_botLayer) {
+            if (g_botContinueSession) finalizeContinueSession();
+            else stopBot(false);
+            notify("GD Bot: playback stopped because the level changed");
+            return;
+        }
 
         while (g_playIndex < g_events.size() && g_events[g_playIndex].time <= g_botClock) {
             const auto event = g_events[g_playIndex++];
@@ -729,9 +992,67 @@ namespace {
         }
 
         if (g_playIndex >= g_events.size()) {
+            if (g_botMode == BotMode::Continuing) {
+                // Complete the final physics update first, then checkpoint. Otherwise
+                // the checkpoint can be one frame before the visible macro endpoint.
+                g_botContinueHandoffPending = true;
+                return;
+            }
+
+            // Always release held inputs before either stopping or beginning another loop.
             releasePlaybackButtons();
-            g_botMode = BotMode::Idle;
-            notify("GD Bot: playback finished");
+            if (botLoopEnabled() && !g_events.empty() && PlayLayer::get() == layer) {
+                g_botClock = 0.0;
+                g_playIndex = 0;
+                g_playbackHeldButtons.clear();
+                // Keep Playing mode and the same level association for the next pass.
+            } else {
+                g_botMode = BotMode::Idle;
+                g_botLayer = nullptr;
+                notify("GD Bot: playback finished");
+            }
+        }
+    }
+
+    void finishContinuePlayback(PlayLayer* layer, double frameDelta) {
+        if (!g_botContinueHandoffPending) return;
+        g_botContinueHandoffPending = false;
+        if (g_botMode != BotMode::Continuing || !layer || !layer->m_player1 ||
+            layer != g_botLayer || PlayLayer::get() != layer) {
+            return;
+        }
+
+        const auto heldToRelease = g_playbackHeldButtons;
+        // The current physics tick has completed. Use its end-time for the release
+        // boundary and suppress the normal clock increment later in this update.
+        const double appendTime = std::max(g_botClock + std::max(0.0, frameDelta),
+            g_events.empty() ? 0.0 : g_events.back().time);
+        if (g_events.size() + heldToRelease.size() >= kMaxMacroEvents ||
+            !std::isfinite(appendTime) || appendTime >= kMaxMacroDurationSeconds) {
+            if (g_botContinueSession) finalizeContinueSession();
+            else stopBot(false);
+            notify("GD Bot: Continue stopped at a macro limit; previous events were kept");
+            return;
+        }
+
+        // Store matching button-up events in the combined macro. A later full playback
+        // will then reproduce the release boundary instead of leaving a key held.
+        for (const int button : heldToRelease) {
+            g_events.push_back({appendTime, button, false});
+        }
+        releasePlaybackButtons();
+        g_botClock = appendTime;
+        g_playIndex = g_events.size();
+        g_botMode = BotMode::Recording;
+        g_botClockAdvancedThisFrame = true;
+
+        // A checkpoint allows subsequent Practice deaths to return to the exact point
+        // where the appended section begins.
+        auto* checkpoint = layer->createCheckpoint();
+        if (checkpoint) {
+            notify("GD Bot: reached saved endpoint — recording continued; checkpoint placed");
+        } else {
+            notify("GD Bot: reached saved endpoint — recording continued, but checkpoint failed");
         }
     }
 
@@ -763,12 +1084,15 @@ private:
     ButtonSprite* m_musicSprite = nullptr;
     ButtonSprite* m_musicSyncSprite = nullptr;
     ButtonSprite* m_speedValueSprite = nullptr;
+    ButtonSprite* m_botLoopSprite = nullptr;
+    ButtonSprite* m_botSlotSprite = nullptr;
+    ButtonSprite* m_botRateSprite = nullptr;
 
 protected:
     bool init() {
         // Compact grid; button labels are deliberately short so they stay inside
         // the popup on narrow Android screens as well as on desktop.
-        if (!Popup::init(360.f, 390.f)) return false;
+        if (!Popup::init(360.f, 450.f)) return false;
         setTitle("MegaSoft Pulse");
 
         auto* menu = CCMenu::create();
@@ -798,7 +1122,11 @@ protected:
         const float rowSpeed = size.height - 164.f;
         const float rowBot1 = size.height - 210.f;
         const float rowBot2 = size.height - 255.f;
+        const float rowBot2Left = size.width * 0.28f;
+        const float rowBot2Right = size.width * 0.72f;
         const float rowBot3 = size.height - 300.f;
+        const float rowBot4 = size.height - 344.f;
+        const float rowBot5 = size.height - 388.f;
 
         m_noClipSprite = addButton(noclipEnabled() ? "NOCLIP ON" : "NOCLIP OFF",
             menu_selector(MegaSoftPulsePopup::onToggleNoClip), left, rowToggles,
@@ -819,10 +1147,20 @@ protected:
 
         addButton("BOT REC", menu_selector(MegaSoftPulsePopup::onRecord), left, rowBot1, "GJ_button_01.png");
         addButton("BOT STOP", menu_selector(MegaSoftPulsePopup::onStopBot), right, rowBot1, "GJ_button_04.png");
-        addButton("BOT PLAY", menu_selector(MegaSoftPulsePopup::onPlay), left, rowBot2, "GJ_button_01.png");
-        addButton("BOT SAVE", menu_selector(MegaSoftPulsePopup::onSave), right, rowBot2, "GJ_button_02.png");
+        addButton("BOT PLAY", menu_selector(MegaSoftPulsePopup::onPlay), rowBot2Left, rowBot2, "GJ_button_01.png");
+        addButton("CONTINUE", menu_selector(MegaSoftPulsePopup::onContinue), center, rowBot2, "GJ_button_02.png");
+        addButton("BOT SAVE", menu_selector(MegaSoftPulsePopup::onSave), rowBot2Right, rowBot2, "GJ_button_02.png");
         addButton("BOT LOAD", menu_selector(MegaSoftPulsePopup::onLoad), left, rowBot3, "GJ_button_02.png");
         addButton("BOT STATUS", menu_selector(MegaSoftPulsePopup::onBotStatus), right, rowBot3, "GJ_button_01.png");
+
+        m_botLoopSprite = addButton(botLoopEnabled() ? "BOT LOOP ON" : "BOT LOOP OFF",
+            menu_selector(MegaSoftPulsePopup::onToggleBotLoop), left, rowBot4,
+            botLoopEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_botSlotSprite = addButton("BOT SLOT " + std::to_string(botMacroSlot()),
+            menu_selector(MegaSoftPulsePopup::onNextBotSlot), right, rowBot4, "GJ_button_01.png");
+        addButton("-0.25x", menu_selector(MegaSoftPulsePopup::onBotRateDown), left, rowBot5, "GJ_button_01.png");
+        m_botRateSprite = addButton(botPlaybackRateLabel(), menu_selector(MegaSoftPulsePopup::onBotRateInfo), center, rowBot5, "GJ_button_02.png");
+        addButton("+0.25x", menu_selector(MegaSoftPulsePopup::onBotRateUp), right, rowBot5, "GJ_button_01.png");
 
         addButton("MORE TOOLS", menu_selector(MegaSoftPulsePopup::onMore),
             center, 27.f, "GJ_button_01.png");
@@ -889,20 +1227,33 @@ public:
             onClose(nullptr);
             return;
         }
+        // If the user starts a fresh recording during Continue, save the combined
+        // macro first; never silently erase the previous section.
+        if (g_botContinueSession && !finalizeContinueSession()) {
+            onClose(nullptr);
+            return;
+        }
         stopBot(false);
         g_events.clear();
         g_playbackHeldButtons.clear();
         g_botClock = 0.0;
         g_playIndex = 0;
+        g_botContinueHandoffPending = false;
+        g_botClockAdvancedThisFrame = false;
         layer->resetLevel();
         g_macroLevelID = currentLevelID();
+        g_botLayer = layer;
         g_botMode = BotMode::Recording;
         notify("GD Bot: recording started; play the level now");
         onClose(nullptr);
     }
 
     void onStopBot(CCObject*) {
-        stopBot();
+        if (g_botContinueSession) {
+            finalizeContinueSession();
+        } else {
+            stopBot();
+        }
         onClose(nullptr);
     }
 
@@ -912,6 +1263,13 @@ public:
             notify("GD Bot: enter the recorded level first");
             onClose(nullptr);
             return;
+        }
+        if (g_botContinueSession && !finalizeContinueSession()) {
+            onClose(nullptr);
+            return;
+        }
+        if (g_events.empty()) {
+            loadMacro();
         }
         if (g_events.empty()) {
             notify("GD Bot: record or load a macro first");
@@ -928,19 +1286,122 @@ public:
         g_botClock = 0.0;
         g_playIndex = 0;
         g_playbackHeldButtons.clear();
+        g_botContinueHandoffPending = false;
+        g_botClockAdvancedThisFrame = false;
         layer->resetLevel();
+        g_botLayer = layer;
         g_botMode = BotMode::Playing;
+        g_botContinueSession = false;
         notify("GD Bot: playback started");
         onClose(nullptr);
     }
 
-    void onSave(CCObject*) { saveMacro(); onClose(nullptr); }
-    void onLoad(CCObject*) { loadMacro(); onClose(nullptr); }
+    void onContinue(CCObject*) {
+        if (g_botContinueSession) {
+            notify("GD Bot: a Continue session is already active; stop/save it first");
+            onClose(nullptr);
+            return;
+        }
+        if (g_botMode != BotMode::Idle) {
+            notify("GD Bot: stop the current bot action first");
+            onClose(nullptr);
+            return;
+        }
+        // Continue must use the selected slot's persisted macro, not a stale in-memory
+        // recording from another slot. A failed load leaves the old in-memory data safe,
+        // but is not allowed to start Continue from it by accident.
+        if (!loadMacro()) {
+            notify("GD Bot Continue: save a macro in the selected slot first");
+            onClose(nullptr);
+            return;
+        }
+        auto* layer = PlayLayer::get();
+        if (!layer || !layer->m_player1) {
+            notify("GD Bot Continue: open the macro's level first; Practice activates automatically");
+            onClose(nullptr);
+            return;
+        }
+        const int levelID = currentLevelID();
+        if (g_macroLevelID != 0 && levelID != 0 && g_macroLevelID != levelID) {
+            notify("GD Bot Continue: open the same level as the saved macro");
+            onClose(nullptr);
+            return;
+        }
+        if (g_events.size() >= kMaxMacroEvents) {
+            notify("GD Bot Continue: event limit reached; old macro kept");
+            onClose(nullptr);
+            return;
+        }
+
+        // Unlike a normal playback, Continue starts from the beginning in Practice
+        // mode, replays the full old macro, then appends new inputs to the same vector.
+        layer->togglePracticeMode(true);
+        stopBot(false);
+        g_botClock = 0.0;
+        g_playIndex = 0;
+        g_playbackHeldButtons.clear();
+        g_botContinueHandoffPending = false;
+        g_botClockAdvancedThisFrame = false;
+        layer->resetLevelFromStart();
+        g_botLayer = layer;
+        g_botMode = BotMode::Continuing;
+        g_botContinueSession = true;
+        notify("GD Bot Continue: Practice ON; replaying saved inputs, then recording will append without deleting them");
+        onClose(nullptr);
+    }
+
+    void onSave(CCObject*) {
+        // Saving during Continue playback stores the intact previous macro but must
+        // not disable the pending append phase when playback reaches its endpoint.
+        const bool continuePlaybackInProgress = g_botMode == BotMode::Continuing;
+        if (saveMacro() && !continuePlaybackInProgress) g_botContinueSession = false;
+        onClose(nullptr);
+    }
+    void onLoad(CCObject*) {
+        if (g_botContinueSession && !finalizeContinueSession()) {
+            onClose(nullptr);
+            return;
+        }
+        loadMacro();
+        onClose(nullptr);
+    }
 
     void onBotStatus(CCObject*) {
         const char* mode = g_botMode == BotMode::Recording ? "RECORDING" :
+                           g_botMode == BotMode::Continuing ? "CONTINUE PLAYBACK" :
                            g_botMode == BotMode::Playing ? "PLAYING" : "IDLE";
-        notify(std::string("GD Bot: ") + mode + " | events: " + std::to_string(g_events.size()));
+        notify(std::string("GD Bot: ") + mode + " | events: " + std::to_string(g_events.size()) +
+            " | slot: " + std::to_string(botMacroSlot()) + (botLoopEnabled() ? " | loop: ON" : " | loop: OFF") +
+            (g_botContinueSession ? " | append session: ON" : ""));
+    }
+
+    void onToggleBotLoop(CCObject*) {
+        setBotLoopEnabled(!botLoopEnabled());
+        if (m_botLoopSprite) m_botLoopSprite->setString(botLoopEnabled() ? "BOT LOOP ON" : "BOT LOOP OFF");
+        notify(std::string("GD Bot loop ") + (botLoopEnabled() ? "ON" : "OFF"));
+    }
+    void onNextBotSlot(CCObject*) {
+        if (g_botContinueSession) {
+            notify("GD Bot: save/stop Continue before switching macro slots");
+            return;
+        }
+        const int nextSlot = botMacroSlot() >= 3 ? 1 : botMacroSlot() + 1;
+        setBotMacroSlot(nextSlot);
+        if (m_botSlotSprite) m_botSlotSprite->setString(("BOT SLOT " + std::to_string(nextSlot)).c_str());
+        notify("GD Bot: active save slot " + std::to_string(nextSlot));
+    }
+    void onBotRateDown(CCObject*) {
+        setBotPlaybackRate(botPlaybackRate() - 0.25f);
+        if (m_botRateSprite) m_botRateSprite->setString(botPlaybackRateLabel().c_str());
+        notify("GD Bot: playback " + botPlaybackRateLabel().substr(5));
+    }
+    void onBotRateUp(CCObject*) {
+        setBotPlaybackRate(botPlaybackRate() + 0.25f);
+        if (m_botRateSprite) m_botRateSprite->setString(botPlaybackRateLabel().c_str());
+        notify("GD Bot: playback " + botPlaybackRateLabel().substr(5));
+    }
+    void onBotRateInfo(CCObject*) {
+        notify("GD Bot playback rate: " + botPlaybackRateLabel().substr(5) + ". Range 0.25x to 2.00x.");
     }
 };
 
@@ -1480,7 +1941,7 @@ private:
 
 protected:
     bool init() {
-        if (!Popup::init(400.f, 410.f)) return false;
+        if (!Popup::init(400.f, 450.f)) return false;
         setTitle("MegaSoft Pulse - Editor");
         auto* menu = CCMenu::create();
         if (!menu || !m_mainLayer) return false;
@@ -1518,6 +1979,8 @@ protected:
         addButton("SCALE +", menu_selector(MegaSoftEditorPopup::onScalePlus), right, row5, "GJ_button_01.png");
         m_moveStepSprite = addButton("MOVE STEP 1.0", menu_selector(MegaSoftEditorPopup::onCycleMoveStep), center, row6, "GJ_button_02.png");
         addButton("ABSOLUTE X/Y", menu_selector(MegaSoftEditorPopup::onAbsolutePosition), center, size.height - 322.f, "GJ_button_02.png");
+        addButton("COPY XFORM", menu_selector(MegaSoftEditorPopup::onCopyTransform), left, size.height - 365.f, "GJ_button_01.png");
+        addButton("PASTE XFORM", menu_selector(MegaSoftEditorPopup::onPasteTransform), right, size.height - 365.f, "GJ_button_01.png");
         addButton("INFO", menu_selector(MegaSoftEditorPopup::onInfo), left, 36.f, "GJ_button_01.png");
         addButton("BACK", menu_selector(MegaSoftEditorPopup::onBack), right, 36.f, "GJ_button_01.png");
         refreshLabels();
@@ -1540,13 +2003,65 @@ public:
     void onRotatePlus90(CCObject*) { modifySelectedObjects(0.f, 0.f, 0.f, 90.f); }
     void onScaleMinus(CCObject*) { modifySelectedObjects(0.f, 0.f, -scaleStep(), 0.f); }
     void onScalePlus(CCObject*) { modifySelectedObjects(0.f, 0.f, scaleStep(), 0.f); }
+    void onCopyTransform(CCObject*) {
+        auto* editorLayer = LevelEditorLayer::get();
+        auto* editor = editorLayer ? editorLayer->m_editorUI : nullptr;
+        auto* selected = editor ? editor->getSelectedObjects() : nullptr;
+        if (!selected || selected->count() == 0) {
+            notify("Copy Transform: select an object first");
+            return;
+        }
+        auto* object = static_cast<GameObject*>(selected->objectAtIndex(0));
+        if (!object) {
+            notify("Copy Transform: selected object is unavailable");
+            return;
+        }
+        Mod::get()->setSavedValue("editor-transform-x", object->getPositionX());
+        Mod::get()->setSavedValue("editor-transform-y", object->getPositionY());
+        Mod::get()->setSavedValue("editor-transform-rotation", object->getRotation());
+        Mod::get()->setSavedValue("editor-transform-scale", object->getScale());
+        Mod::get()->setSavedValue("editor-transform-valid", true);
+        notify("Editor: transform copied from first selected object");
+    }
+    void onPasteTransform(CCObject*) {
+        if (!Mod::get()->getSavedValue<bool>("editor-transform-valid", false)) {
+            notify("Paste Transform: copy a transform first");
+            return;
+        }
+        auto* editorLayer = LevelEditorLayer::get();
+        auto* editor = editorLayer ? editorLayer->m_editorUI : nullptr;
+        auto* selected = editor ? editor->getSelectedObjects() : nullptr;
+        if (!selected || selected->count() == 0) {
+            notify("Paste Transform: select one or more objects first");
+            return;
+        }
+        const float x = Mod::get()->getSavedValue<float>("editor-transform-x", 0.f);
+        const float y = Mod::get()->getSavedValue<float>("editor-transform-y", 0.f);
+        const float rotation = Mod::get()->getSavedValue<float>("editor-transform-rotation", 0.f);
+        const float scale = Mod::get()->getSavedValue<float>("editor-transform-scale", 1.f);
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(rotation) ||
+            !std::isfinite(scale) || scale < 0.1f || scale > 100.f) {
+            notify("Paste Transform: saved transform is invalid");
+            return;
+        }
+        unsigned int changed = 0;
+        for (unsigned int i = 0; i < selected->count(); ++i) {
+            auto* object = static_cast<GameObject*>(selected->objectAtIndex(i));
+            if (!object) continue;
+            object->setPosition({x, y});
+            object->setRotation(rotation);
+            object->setScale(scale);
+            ++changed;
+        }
+        notify("Editor: pasted transform to " + std::to_string(changed) + " object(s)");
+    }
     void onCycleMoveStep(CCObject*) { cycleMoveStep(); }
     void onAbsolutePosition(CCObject*) {
         onClose(nullptr);
         if (auto* popup = MegaSoftAbsolutePositionPopup::create()) popup->show();
     }
     void onInfo(CCObject*) {
-        FLAlertLayer::create("Editor helpers", "Select objects first. X/Y nudge the selection by 0.1, 1 or 10 units; MOVE STEP changes the amount. ROT buttons rotate selected objects by 15 or 90 degrees. SCALE changes uniform scale by 0.1. ABSOLUTE X/Y opens numeric fields to set the selected objects at the exact entered coordinate.", "OK")->show();
+        FLAlertLayer::create("Editor helpers", "Select objects first. X/Y nudge the selection by 0.1, 1 or 10 units; MOVE STEP changes the amount. ROT buttons rotate selected objects by 15 or 90 degrees. SCALE changes uniform scale by 0.1. ABSOLUTE X/Y opens numeric fields to set the selected objects at the exact entered coordinate. COPY TRANSFORM saves position/rotation/scale from the first selected object; PASTE TRANSFORM applies that transform to every selected object.", "OK")->show();
     }
     void onBack(CCObject*) {
         onClose(nullptr);
@@ -1560,20 +2075,24 @@ void reopenEditorPopup() {
 
 class MegaSoftVisualsPopup : public Popup {
     ButtonSprite* m_trajectorySprite = nullptr;
+    ButtonSprite* m_predictionSprite = nullptr;
     ButtonSprite* m_clicksSprite = nullptr;
+    ButtonSprite* m_fpsCounterSprite = nullptr;
     ButtonSprite* m_customMusicSprite = nullptr;
     ButtonSprite* m_transparentPauseSprite = nullptr;
     ButtonSprite* m_hidePauseSprite = nullptr;
     void refreshLabels() {
         if (m_trajectorySprite) m_trajectorySprite->setString(trajectoryEnabled() ? "TRAIL ON" : "TRAIL OFF");
+        if (m_predictionSprite) m_predictionSprite->setString(trajectoryPredictorEnabled() ? "PREDICT ON" : "PREDICT OFF");
         if (m_clicksSprite) m_clicksSprite->setString(showClicksEnabled() ? "CLICKS ON" : "CLICKS OFF");
+        if (m_fpsCounterSprite) m_fpsCounterSprite->setString(fpsCounterEnabled() ? "FPS COUNT ON" : "FPS COUNT OFF");
         if (m_customMusicSprite) m_customMusicSprite->setString(customMenuMusicEnabled() ? "CUSTOM MUSIC ON" : "CUSTOM MUSIC OFF");
         if (m_transparentPauseSprite) m_transparentPauseSprite->setString(transparentPauseEnabled() ? "PAUSE ALPHA ON" : "PAUSE ALPHA OFF");
         if (m_hidePauseSprite) m_hidePauseSprite->setString(hidePauseButtonEnabled() ? "HIDE PAUSE ON" : "HIDE PAUSE OFF");
     }
 protected:
     bool init() {
-        if (!Popup::init(390.f, 395.f)) return false;
+        if (!Popup::init(390.f, 425.f)) return false;
         setTitle("MegaSoft Pulse - Visuals");
         auto* menu = CCMenu::create();
         if (!menu || !m_mainLayer) return false;
@@ -1593,17 +2112,21 @@ protected:
             menu->addChild(item);
             return sprite;
         };
-        m_trajectorySprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleTrajectory), left, size.height - 62.f,
+        m_trajectorySprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleTrajectory), left, size.height - 58.f,
             trajectoryEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_clicksSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleClicks), right, size.height - 62.f,
+        m_predictionSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onTogglePrediction), right, size.height - 58.f,
+            trajectoryPredictorEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_clicksSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleClicks), left, size.height - 112.f,
             showClicksEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_customMusicSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleCustomMusic), center, size.height - 120.f,
+        m_fpsCounterSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleFPSCounter), right, size.height - 112.f,
+            fpsCounterEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_customMusicSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleCustomMusic), center, size.height - 166.f,
             customMenuMusicEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_transparentPauseSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleTransparentPause), left, size.height - 178.f,
+        m_transparentPauseSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleTransparentPause), left, size.height - 220.f,
             transparentPauseEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_hidePauseSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleHidePause), right, size.height - 178.f,
+        m_hidePauseSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleHidePause), right, size.height - 220.f,
             hidePauseButtonEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        addButton("MUSIC FILE INFO", menu_selector(MegaSoftVisualsPopup::onMusicInfo), center, size.height - 242.f, "GJ_button_01.png");
+        addButton("MUSIC FILE INFO", menu_selector(MegaSoftVisualsPopup::onMusicInfo), center, size.height - 278.f, "GJ_button_01.png");
         addButton("BACK", menu_selector(MegaSoftVisualsPopup::onBack), center, 28.f, "GJ_button_01.png");
         refreshLabels();
         return true;
@@ -1617,7 +2140,7 @@ public:
     }
     void onToggleTrajectory(CCObject*) {
         setTrajectoryEnabled(!trajectoryEnabled());
-        if (!trajectoryEnabled() && g_trajectoryDrawNode) {
+        if (!trajectoryEnabled() && !trajectoryPredictorEnabled() && g_trajectoryDrawNode) {
             g_trajectoryDrawNode->removeFromParentAndCleanup(true);
             g_trajectoryDrawNode = nullptr;
             g_trajectoryLayer = nullptr;
@@ -1626,11 +2149,32 @@ public:
         refreshLabels();
         notify(std::string("Position trail ") + (trajectoryEnabled() ? "ON" : "OFF"));
     }
+    void onTogglePrediction(CCObject*) {
+        setTrajectoryPredictorEnabled(!trajectoryPredictorEnabled());
+        if (!trajectoryEnabled() && !trajectoryPredictorEnabled() && g_trajectoryDrawNode) {
+            g_trajectoryDrawNode->removeFromParentAndCleanup(true);
+            g_trajectoryDrawNode = nullptr;
+            g_trajectoryLayer = nullptr;
+            g_trajectoryPoints.clear();
+        }
+        refreshLabels();
+        notify(trajectoryPredictorEnabled()
+            ? "Trajectory prediction ON (approximate; game triggers can change it)"
+            : "Trajectory prediction OFF");
+    }
     void onToggleClicks(CCObject*) {
         setShowClicksEnabled(!showClicksEnabled());
         if (!showClicksEnabled() && g_clickLabel) g_clickLabel->setVisible(false);
         refreshLabels();
         notify(std::string("Show Clicks ") + (showClicksEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleFPSCounter(CCObject*) {
+        setFPSCounterEnabled(!fpsCounterEnabled());
+        if (!fpsCounterEnabled() && g_fpsCounterLabel) g_fpsCounterLabel->setVisible(false);
+        refreshLabels();
+        notify(fpsCounterEnabled()
+            ? "Game FPS counter ON (measures PlayLayer updates)"
+            : "Game FPS counter OFF");
     }
     void onToggleCustomMusic(CCObject*) {
         if (!customMenuMusicEnabled()) {
@@ -1779,14 +2323,43 @@ class $modify(MegaSoftPulsePauseLayer, PauseLayer) {
     }
 };
 
+// Preserve the pitch requested by Geometry Dash, while applying the Speedhack
+// multiplier to the music channel when Music Speed Sync is enabled.
+class $modify(MegaSoftPulseMusicAudioEngine, FMODAudioEngine) {
+    void setChannelPitch(int id, AudioTargetType type, float pitch) {
+        if (type == AudioTargetType::MusicChannel && std::isfinite(pitch) && pitch > 0.0f) {
+            if (!g_settingMusicPitch) {
+                g_musicBasePitchByChannel[id] = pitch;
+                pitch = std::clamp(pitch * musicPitchScale(), 0.05f, 10.0f);
+            }
+            g_musicAppliedPitchByChannel[id] = pitch;
+        }
+        FMODAudioEngine::setChannelPitch(id, type, pitch);
+    }
+};
+
 // Add the MegaSoft Pulse quick-open button to each new scene, not just gameplay.
 class $modify(MegaSoftPulseDirector, CCDirector) {
     void drawScene() {
+        // Detect level transitions even if no more input arrives. This prevents
+        // GD Bot from staying in RECORDING/PLAYING after its PlayLayer disappears.
+        if (g_botMode != BotMode::Idle && g_botLayer && PlayLayer::get() != g_botLayer) {
+            const auto oldMode = g_botMode;
+            if (g_botContinueSession) {
+                finalizeContinueSession();
+            } else {
+                stopBot(false);
+            }
+            notify(oldMode == BotMode::Recording
+                ? "GD Bot: recording stopped because the level changed"
+                : "GD Bot: playback stopped because the level changed");
+        }
+
         // Enforce Music OFF in menus as well as in gameplay if the game starts
         // a new track after the toggle has been enabled.
+        applyCustomMenuMusic();
         if (musicMuted()) applyMusicMute();
         applyMusicPitch();
-        applyCustomMenuMusic();
         if (auto* scene = this->getRunningScene()) {
             attachMegaSoftPulseButton(scene);
             updateLayoutGrid(scene);
@@ -1799,6 +2372,11 @@ class $modify(MegaSoftPulseDirector, CCDirector) {
 // reliable for on-screen/touch controls than relying only on PlayerObject hooks.
 class $modify(MegaSoftPulseBaseGameLayer, GJBaseGameLayer) {
     void handleButton(bool down, int button, bool isPlayer1) {
+        if (isPlayer1 && !g_injectedInput && g_botMode == BotMode::Continuing) {
+            // User gameplay inputs during Continue replay would alter the route before
+            // the saved endpoint. UI buttons still work because they bypass this dispatcher.
+            return;
+        }
         if (isPlayer1 && !g_injectedInput) {
             recordInput(button, down);
             if (down && cpsEnabled()) ++g_cpsInputCount;
@@ -1826,15 +2404,21 @@ class $modify(MegaSoftPulsePlayLayer, PlayLayer) {
         applySpeedhack();
         if (musicMuted()) applyMusicMute();
         updateCPSOverlay(this, dt);
+        updateFPSCounterOverlay(this);
         updateNoclipStatusOverlay(this);
-        if (g_botMode == BotMode::Playing) processPlayback(this);
+        if (g_botMode == BotMode::Playing || g_botMode == BotMode::Continuing) processPlayback(this);
         PlayLayer::update(dt);
+        const double safeFrameDelta = std::max(0.0, static_cast<double>(dt));
+        finishContinuePlayback(this, safeFrameDelta);
         updateTrajectoryTrail(this);
         updateClickIndicator(this, dt);
         updatePauseButtonVisibility(this);
 
-        if (g_botMode == BotMode::Recording || g_botMode == BotMode::Playing) {
-            g_botClock += std::max(0.0, static_cast<double>(dt));
+        if (g_botMode == BotMode::Recording) {
+            if (!g_botClockAdvancedThisFrame) g_botClock += safeFrameDelta;
+            g_botClockAdvancedThisFrame = false;
+        } else if (g_botMode == BotMode::Playing || g_botMode == BotMode::Continuing) {
+            g_botClock += safeFrameDelta * static_cast<double>(botPlaybackRate());
         }
         if (g_autoRetryPending) {
             g_autoRetryPending = false;
@@ -1852,6 +2436,11 @@ class $modify(MegaSoftPulsePlayLayer, PlayLayer) {
             }
             setNoclipEnabled(false);
             notify("Noclip limit reached; normal death enabled");
+        }
+        if (primaryPlayer && (g_botMode == BotMode::Playing || g_botMode == BotMode::Continuing)) {
+            if (g_botContinueSession) finalizeContinueSession();
+            else stopBot(false);
+            notify("GD Bot: playback stopped after death");
         }
         if (primaryPlayer && hitboxesOnDeathEnabled() && !hitboxesEnabled() && !g_noclipDeathDrawActive) {
             toggleDebugDraw();
@@ -1878,7 +2467,8 @@ class $modify(MegaSoftPulsePlayLayer, PlayLayer) {
     }
 
     void onQuit() {
-        stopBot(false);
+        if (g_botContinueSession) finalizeContinueSession();
+        else stopBot(false);
         if (auto* director = CCDirector::sharedDirector()) {
             if (auto* scheduler = director->getScheduler()) scheduler->setTimeScale(1.0f);
         }
@@ -1895,5 +2485,5 @@ $on_mod(Loaded) {
     applyFPSBypass();
     if (musicMuted()) applyMusicMute();
     applyMusicPitch();
-    log::info("MegaSoft Pulse v1.1.0 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
+    log::info("MegaSoft Pulse v1.1.8 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
 }
