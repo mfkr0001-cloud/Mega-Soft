@@ -219,6 +219,18 @@ namespace {
     PlayLayer* g_trajectoryLayer = nullptr;
     CCDrawNode* g_trajectoryDrawNode = nullptr;
     std::vector<CCPoint> g_trajectoryPoints;
+
+    void clearTrajectoryTrail() {
+        // The old PlayLayer can already be destroyed during scene changes. Only
+        // dereference the node if it is still attached to the currently live layer.
+        if (g_trajectoryDrawNode && g_trajectoryLayer && PlayLayer::get() == g_trajectoryLayer) {
+            g_trajectoryDrawNode->removeFromParentAndCleanup(true);
+        }
+        g_trajectoryDrawNode = nullptr;
+        g_trajectoryLayer = nullptr;
+        g_trajectoryPoints.clear();
+    }
+
     PlayLayer* g_pauseButtonLayer = nullptr;
     CCNode* g_pauseButtonNode = nullptr;
     PlayLayer* g_clickLayer = nullptr;
@@ -238,12 +250,23 @@ namespace {
     void applyFPSBypass() {
         auto* director = CCDirector::sharedDirector();
         if (!director) return;
-        if (fpsBypassEnabled()) {
-            director->setAnimationInterval(1.0 / static_cast<double>(targetFPS()));
-        } else {
-            director->setAnimationInterval(g_originalAnimationInterval > 0.0
-                ? g_originalAnimationInterval : 1.0 / 60.0);
+        const double desired = fpsBypassEnabled()
+            ? 1.0 / static_cast<double>(targetFPS())
+            : (g_originalAnimationInterval > 0.0 ? g_originalAnimationInterval : 1.0 / 60.0);
+        // Avoid resetting the director's frame timer on every drawScene call.
+        if (std::abs(director->getAnimationInterval() - desired) > 0.00001) {
+            director->setAnimationInterval(desired);
         }
+    }
+
+    void applyHitboxes(PlayLayer* layer) {
+        if (!layer) return;
+        // toggleDebugDraw() is a toggle, not a setter. Compare the actual game
+        // state first so menu callbacks and new PlayLayer instances cannot invert it.
+        if (layer->shouldDebugDraw() != hitboxesEnabled()) {
+            layer->toggleDebugDraw();
+        }
+        g_debugDrawLayer = layer;
     }
 
     void updateCPSOverlay(PlayLayer* layer, float dt) {
@@ -441,10 +464,7 @@ namespace {
         const bool showTrail = trajectoryEnabled();
         const bool showPrediction = trajectoryPredictorEnabled();
         if (!showTrail && !showPrediction) {
-            if (g_trajectoryDrawNode) g_trajectoryDrawNode->removeFromParentAndCleanup(true);
-            g_trajectoryDrawNode = nullptr;
-            g_trajectoryLayer = nullptr;
-            g_trajectoryPoints.clear();
+            clearTrajectoryTrail();
             return;
         }
         if (g_trajectoryLayer != layer) {
@@ -603,6 +623,9 @@ namespace {
     BotMode g_botMode = BotMode::Idle;
     std::vector<BotEvent> g_events;
     std::vector<int> g_playbackHeldButtons;
+    // Physical buttons currently down while recording. When recording is stopped,
+    // we append button-up events so playback never ends with a permanently held input.
+    std::vector<int> g_recordingHeldButtons;
     double g_botClock = 0.0;
     std::size_t g_playIndex = 0;
     int g_macroLevelID = 0;
@@ -666,7 +689,9 @@ namespace {
     }
 
     float musicPitchScale() {
-        if (!PlayLayer::get() || !speedhackEnabled() || !musicSpeedSyncEnabled()) return 1.0f;
+        // The setting survives PlayLayer replacement; apply it to newly created
+        // music channels too, rather than only while the original level is alive.
+        if (!speedhackEnabled() || !musicSpeedSyncEnabled()) return 1.0f;
         return speedMultiplier();
     }
 
@@ -726,7 +751,10 @@ namespace {
         auto* director = CCDirector::sharedDirector();
         auto* scheduler = director ? director->getScheduler() : nullptr;
         if (scheduler) {
-            scheduler->setTimeScale((PlayLayer::get() && speedhackEnabled()) ? speedMultiplier() : 1.0f);
+            // Scheduler time scale is global, so physics, player movement and
+            // level mechanics scale together. Do not gate it on PlayLayer::get():
+            // that pointer is briefly null during retries and level transitions.
+            scheduler->setTimeScale(speedhackEnabled() ? speedMultiplier() : 1.0f);
         }
         applyMusicPitch();
     }
@@ -815,6 +843,7 @@ namespace {
         g_botPlaybackFinishPending = false;
         g_botLoopRestartPending = false;
         g_botClockAdvancedThisFrame = false;
+        g_recordingHeldButtons.clear();
 
         if (!showNotification || oldMode == BotMode::Idle) return;
         if (oldMode == BotMode::Recording) {
@@ -829,23 +858,45 @@ namespace {
         auto* layer = PlayLayer::get();
         if (!layer || !layer->m_player1) return;
         if (layer != g_botLayer) {
-            if (g_botContinueSession) finalizeContinueSession();
-            else stopBot(false);
-            notify("GD Bot: recording stopped because the level changed");
+            if (g_botContinueSession) {
+                finalizeContinueSession();
+            } else if (!g_events.empty()) {
+                saveMacro();
+            } else {
+                stopBot(false);
+            }
+            notify("GD Bot: recording stopped because the level changed; partial macro was saved when possible");
             return;
         }
         if (button < 0 || button > 32) return;
         if (g_events.size() >= kMaxMacroEvents) {
             if (g_botContinueSession) finalizeContinueSession();
+            else if (!g_events.empty()) saveMacro();
             else stopBot(false);
-            notify("GD Bot: event limit reached; recording stopped");
+            notify("GD Bot: event limit reached; recording stopped and partial macro saved when possible");
             return;
         }
         g_events.push_back({g_botClock, button, pressed});
+        if (pressed) {
+            if (std::find(g_recordingHeldButtons.begin(), g_recordingHeldButtons.end(), button) == g_recordingHeldButtons.end())
+                g_recordingHeldButtons.push_back(button);
+        } else {
+            std::erase(g_recordingHeldButtons, button);
+        }
     }
 
     bool saveMacro() {
-        if (g_botMode == BotMode::Recording) stopBot(false);
+        if (g_botMode == BotMode::Recording) {
+            // A user can press STOP while still holding jump. Write the matching
+            // release into the macro at the stop timestamp. This keeps the macro
+            // self-contained and prevents a held input from leaking into replay.
+            for (const int button : g_recordingHeldButtons) {
+                if (g_events.size() >= kMaxMacroEvents) break;
+                g_events.push_back({g_botClock, button, false});
+            }
+            g_recordingHeldButtons.clear();
+            stopBot(false);
+        }
         if (g_events.empty()) {
             notify("GD Bot: nothing recorded yet");
             return false;
@@ -923,7 +974,9 @@ namespace {
     // previous on-disk macro and the user can retry saving.
     bool finalizeContinueSession() {
         if (!g_botContinueSession) return true;
-        if (g_botMode != BotMode::Idle) stopBot(false);
+        // saveMacro must see Recording mode so it can close any held physical input.
+        // During the replay portion, stop first to release injected playback buttons.
+        if (g_botMode != BotMode::Idle && g_botMode != BotMode::Recording) stopBot(false);
         if (!saveMacro()) {
             notify("GD Bot: could not save Continue session; original macro file is kept");
             return false;
@@ -1423,6 +1476,7 @@ public:
         g_events.clear();
         g_macroSlotInMemory = botMacroSlot();
         g_playbackHeldButtons.clear();
+        g_recordingHeldButtons.clear();
         g_botClock = 0.0;
         g_playIndex = 0;
         g_botContinueHandoffPending = false;
@@ -1430,6 +1484,8 @@ public:
         g_botLoopRestartPending = false;
         g_botClockAdvancedThisFrame = false;
         layer->resetLevel();
+        applySpeedhack();
+        applyMusicPitch();
         g_macroLevelID = currentLevelID();
         g_botLayer = layer;
         g_botMode = BotMode::Recording;
@@ -1437,7 +1493,19 @@ public:
         onClose(nullptr);
     }
     void onStopBot(CCObject*) {
-        if (g_botContinueSession) finalizeContinueSession(); else stopBot();
+        // STOP doubles as a safe finish for a fresh recording: stop and persist it
+        // immediately, so pressing PLAY afterwards does not depend on remembering
+        // a separate SAVE button. Continue sessions retain their append semantics.
+        if (g_botContinueSession) {
+            finalizeContinueSession();
+        } else if (g_botMode == BotMode::Recording) {
+            const auto count = g_events.size();
+            if (saveMacro() && count > 0) {
+                notify("GD Bot: recording saved (" + std::to_string(count) + " input events)");
+            }
+        } else {
+            stopBot();
+        }
         onClose(nullptr);
     }
     void onPlay(CCObject*) {
@@ -1456,6 +1524,8 @@ public:
         g_botContinueHandoffPending = false; g_botPlaybackFinishPending = false; g_botLoopRestartPending = false;
         g_botClockAdvancedThisFrame = false;
         layer->resetLevel();
+        applySpeedhack();
+        applyMusicPitch();
         g_botLayer = layer; g_botMode = BotMode::Playing; g_botContinueSession = false;
         notify("GD Bot: playback started");
         onClose(nullptr);
@@ -1475,14 +1545,20 @@ public:
         g_botContinueHandoffPending = false; g_botPlaybackFinishPending = false; g_botLoopRestartPending = false;
         g_botClockAdvancedThisFrame = false;
         layer->resetLevelFromStart();
+        applySpeedhack();
+        applyMusicPitch();
         g_botLayer = layer; g_botMode = BotMode::Continuing;
         g_botContinueOriginalEventCount = g_events.size(); g_botContinueSession = true;
         notify("GD Bot Continue: Practice ON; replaying saved inputs, then recording will append without deleting them");
         onClose(nullptr);
     }
     void onSave(CCObject*) {
-        const bool continuePlaybackInProgress = g_botMode == BotMode::Continuing;
-        if (saveMacro() && !continuePlaybackInProgress) g_botContinueSession = false;
+        if (g_botContinueSession && g_botMode == BotMode::Recording) {
+            finalizeContinueSession();
+        } else {
+            const bool continuePlaybackInProgress = g_botMode == BotMode::Continuing;
+            if (saveMacro() && !continuePlaybackInProgress) g_botContinueSession = false;
+        }
         onClose(nullptr);
     }
     void onLoad(CCObject*) {
@@ -1523,11 +1599,11 @@ public:
     void onSetFPS(CCObject*) { setFPSBypassEnabled(!fpsBypassEnabled()); applyFPSBypass(); refreshSettingsLabels(); notify(std::string("VETER: FPS bypass ") + (fpsBypassEnabled() ? "ON" : "OFF")); }
     void onFPSDown(CCObject*) { setTargetFPS(targetFPS() - 30); applyFPSBypass(); refreshSettingsLabels(); }
     void onFPSUp(CCObject*) { setTargetFPS(targetFPS() + 30); applyFPSBypass(); refreshSettingsLabels(); }
-    void onFPSInfo(CCObject*) { notify("FPS target: " + std::to_string(targetFPS()) + ". Actual FPS depends on device/display."); }
+    void onFPSInfo(CCObject*) { notify("FPS target: " + std::to_string(targetFPS()) + ". Android also needs high-refresh enabled in Geode Launcher and system display settings; the mod cannot exceed the active display rate."); }
     void onSetRetry(CCObject*) { setAutoRetryEnabled(!autoRetryEnabled()); refreshSettingsLabels(); notify(std::string("VETER: Auto-Retry ") + (autoRetryEnabled() ? "ON" : "OFF")); }
     void onSetHitboxes(CCObject*) {
         const bool enabled = !hitboxesEnabled(); setHitboxesEnabled(enabled);
-        if (auto* layer = PlayLayer::get()) { layer->toggleDebugDraw(); g_debugDrawLayer = layer; }
+        if (auto* layer = PlayLayer::get()) applyHitboxes(layer);
         refreshSettingsLabels(); notify(enabled ? "VETER: Hitboxes ON" : "VETER: Hitboxes OFF");
     }
     void onSetCPS(CCObject*) { setCPSEnabled(!cpsEnabled()); if (!cpsEnabled() && g_cpsLabel) g_cpsLabel->setVisible(false); refreshSettingsLabels(); notify(std::string("VETER: CPS ") + (cpsEnabled() ? "ON" : "OFF")); }
@@ -1546,17 +1622,27 @@ public:
     void onNextCheckpoint(CCObject*) { cycleCheckpoint(1); }
     void onSetConfirmExit(CCObject*) { setConfirmExitEnabled(!confirmExitEnabled()); refreshSettingsLabels(); notify(std::string("Confirm Exit ") + (confirmExitEnabled() ? "ON" : "OFF")); }
     void onSetLayoutMode(CCObject*) { setLayoutModeEnabled(!layoutModeEnabled()); refreshSettingsLabels(); notify(layoutModeEnabled() ? "Layout Mode ON" : "Layout Mode OFF"); }
-    void onFastReset(CCObject*) { auto* layer = PlayLayer::get(); if (!layer) { notify("Fast Reset: enter a level first"); onClose(nullptr); return; } stopBot(false); onClose(nullptr); layer->resetLevel(); }
+    void onFastReset(CCObject*) {
+        auto* layer = PlayLayer::get();
+        if (!layer) { notify("Fast Reset: enter a level first"); onClose(nullptr); return; }
+        if (g_botContinueSession) finalizeContinueSession();
+        else if (g_botMode == BotMode::Recording && !g_events.empty()) saveMacro();
+        else stopBot(false);
+        onClose(nullptr);
+        layer->resetLevel();
+        applySpeedhack();
+        applyMusicPitch();
+    }
 
     // VISUALS tab callbacks share the existing settings and overlay routines.
     void onToggleTrajectory(CCObject*) {
         setTrajectoryEnabled(!trajectoryEnabled());
-        if (!trajectoryEnabled() && !trajectoryPredictorEnabled() && g_trajectoryDrawNode) { g_trajectoryDrawNode->removeFromParentAndCleanup(true); g_trajectoryDrawNode = nullptr; g_trajectoryLayer = nullptr; g_trajectoryPoints.clear(); }
+        if (!trajectoryEnabled() && !trajectoryPredictorEnabled()) clearTrajectoryTrail();
         refreshVisualLabels(); notify(std::string("Position trail ") + (trajectoryEnabled() ? "ON" : "OFF"));
     }
     void onTogglePrediction(CCObject*) {
         setTrajectoryPredictorEnabled(!trajectoryPredictorEnabled());
-        if (!trajectoryEnabled() && !trajectoryPredictorEnabled() && g_trajectoryDrawNode) { g_trajectoryDrawNode->removeFromParentAndCleanup(true); g_trajectoryDrawNode = nullptr; g_trajectoryLayer = nullptr; g_trajectoryPoints.clear(); }
+        if (!trajectoryEnabled() && !trajectoryPredictorEnabled()) clearTrajectoryTrail();
         refreshVisualLabels(); notify(trajectoryPredictorEnabled() ? "Trajectory prediction ON (approximate)" : "Trajectory prediction OFF");
     }
     void onToggleClicks(CCObject*) { setShowClicksEnabled(!showClicksEnabled()); if (!showClicksEnabled() && g_clickLabel) g_clickLabel->setVisible(false); refreshVisualLabels(); notify(std::string("Show Clicks ") + (showClicksEnabled() ? "ON" : "OFF")); }
@@ -1715,7 +1801,7 @@ public:
         refreshLabels();
     }
     void onFPSInfo(CCObject*) {
-        notify("FPS target: " + std::to_string(targetFPS()) + ". Actual FPS is limited by the device/display.");
+        notify("FPS target: " + std::to_string(targetFPS()) + ". Android also needs high-refresh enabled in Geode Launcher and system display settings; the mod cannot exceed the active display rate.");
     }
     void onToggleRetry(CCObject*) {
         setAutoRetryEnabled(!autoRetryEnabled());
@@ -1726,10 +1812,7 @@ public:
         const bool enabled = !hitboxesEnabled();
         setHitboxesEnabled(enabled);
         auto* layer = PlayLayer::get();
-        if (layer) {
-            layer->toggleDebugDraw();
-            g_debugDrawLayer = layer;
-        }
+        if (layer) applyHitboxes(layer);
         refreshLabels();
         notify(enabled ? "VETER: Hitboxes ON" : "VETER: Hitboxes OFF");
     }
@@ -1759,9 +1842,13 @@ public:
             onClose(nullptr);
             return;
         }
-        stopBot(false);
+        if (g_botContinueSession) finalizeContinueSession();
+        else if (g_botMode == BotMode::Recording && !g_events.empty()) saveMacro();
+        else stopBot(false);
         onClose(nullptr);
         layer->resetLevel();
+        applySpeedhack();
+        applyMusicPitch();
     }
     void onToggleNoclipLimit(CCObject*) {
         setNoclipLimitEnabled(!noclipLimitEnabled());
@@ -2312,23 +2399,13 @@ public:
     }
     void onToggleTrajectory(CCObject*) {
         setTrajectoryEnabled(!trajectoryEnabled());
-        if (!trajectoryEnabled() && !trajectoryPredictorEnabled() && g_trajectoryDrawNode) {
-            g_trajectoryDrawNode->removeFromParentAndCleanup(true);
-            g_trajectoryDrawNode = nullptr;
-            g_trajectoryLayer = nullptr;
-            g_trajectoryPoints.clear();
-        }
+        if (!trajectoryEnabled() && !trajectoryPredictorEnabled()) clearTrajectoryTrail();
         refreshLabels();
         notify(std::string("Position trail ") + (trajectoryEnabled() ? "ON" : "OFF"));
     }
     void onTogglePrediction(CCObject*) {
         setTrajectoryPredictorEnabled(!trajectoryPredictorEnabled());
-        if (!trajectoryEnabled() && !trajectoryPredictorEnabled() && g_trajectoryDrawNode) {
-            g_trajectoryDrawNode->removeFromParentAndCleanup(true);
-            g_trajectoryDrawNode = nullptr;
-            g_trajectoryLayer = nullptr;
-            g_trajectoryPoints.clear();
-        }
+        if (!trajectoryEnabled() && !trajectoryPredictorEnabled()) clearTrajectoryTrail();
         refreshLabels();
         notify(trajectoryPredictorEnabled()
             ? "Trajectory prediction ON (approximate; game triggers can change it)"
@@ -2493,6 +2570,25 @@ class $modify(VETERGameStats, GameStatsManager) {
 };
 
 class $modify(VETERPlayerObject, PlayerObject) {
+    bool pushButton(PlayerButton button) {
+        // Capture at the player itself so touch controls and other input paths are
+        // recorded even on Android builds that don't expose every event through the
+        // GJBaseGameLayer dispatcher. The dispatcher hook below is kept for CPS/click UI.
+        auto* activeLayer = PlayLayer::get();
+        if (!g_injectedInput && g_botMode == BotMode::Recording && activeLayer &&
+            activeLayer == g_botLayer && activeLayer->m_player1 == this) {
+            recordInput(static_cast<int>(button), true);
+        }
+        return PlayerObject::pushButton(button);
+    }
+    bool releaseButton(PlayerButton button) {
+        auto* activeLayer = PlayLayer::get();
+        if (!g_injectedInput && g_botMode == BotMode::Recording && activeLayer &&
+            activeLayer == g_botLayer && activeLayer->m_player1 == this) {
+            recordInput(static_cast<int>(button), false);
+        }
+        return PlayerObject::releaseButton(button);
+    }
     void playDeathEffect() {
         if (noDeathEffectEnabled()) return;
         PlayerObject::playDeathEffect();
@@ -2544,24 +2640,35 @@ class $modify(VETERDirector, CCDirector) {
             const auto oldMode = g_botMode;
             if (g_botContinueSession) {
                 finalizeContinueSession();
+            } else if (oldMode == BotMode::Recording) {
+                const bool saved = !g_events.empty() && saveMacro();
+                if (!saved) stopBot(false);
+                notify(saved
+                    ? "GD Bot: level changed; partial recording auto-saved"
+                    : "GD Bot: level changed; no input events to save");
             } else {
                 stopBot(false);
+                notify("GD Bot: playback stopped because the level changed");
             }
-            notify(oldMode == BotMode::Recording
-                ? "GD Bot: recording stopped because the level changed"
-                : "GD Bot: playback stopped because the level changed");
         }
 
         // Enforce Music OFF in menus as well as in gameplay if the game starts
         // a new track after the toggle has been enabled.
         applyCustomMenuMusic();
         if (musicMuted()) applyMusicMute();
+        applyFPSBypass();
+        applySpeedhack();
         applyMusicPitch();
         if (auto* scene = this->getRunningScene()) {
             attachVETERButton(scene);
             updateLayoutGrid(scene);
         }
         CCDirector::drawScene();
+        // Reapply after the original draw/transition code, in case the game reset
+        // timing or started a new music channel while changing scenes.
+        applyFPSBypass();
+        applySpeedhack();
+        applyMusicPitch();
     }
 };
 
@@ -2575,7 +2682,8 @@ class $modify(VETERBaseGameLayer, GJBaseGameLayer) {
             return;
         }
         if (isPlayer1 && !g_injectedInput) {
-            recordInput(button, down);
+            // The PlayerObject push/release hooks are the macro recorder's source.
+            // This dispatcher still drives CPS and the click indicator.
             if (down && cpsEnabled()) ++g_cpsInputCount;
             if (down && showClicksEnabled()) g_clickFlashRemaining = 0.22f;
         }
@@ -2590,8 +2698,7 @@ class $modify(VETERPlayLayer, PlayLayer) {
         if (frameStepEnabled()) g_frameStepPending = false;
         // Restore requested built-in visual/practice modes for each new level instance.
         if (g_debugDrawLayer != this) {
-            g_debugDrawLayer = this;
-            if (hitboxesEnabled()) this->toggleDebugDraw();
+            applyHitboxes(this);
         }
         if (g_practiceMusicLayer != this) {
             g_practiceMusicLayer = this;
@@ -2689,12 +2796,18 @@ class $modify(VETERPlayLayer, PlayLayer) {
                     g_botContinueOriginalEventCount <= g_events.size()) {
                     g_events.resize(g_botContinueOriginalEventCount);
                 }
+                // The append tail is intentionally discarded, including any button
+                // that was held only in that incomplete tail.
+                g_recordingHeldButtons.clear();
                 if (finalizeContinueSession()) {
                     notify("GD Bot Continue: died during appended recording; incomplete tail discarded, original macro preserved");
                 }
             } else {
-                stopBot(false);
-                notify("GD Bot: recording stopped after death; partial macro remains in memory");
+                const bool saved = !g_events.empty() && saveMacro();
+                if (!saved) stopBot(false);
+                notify(saved
+                    ? "GD Bot: died while recording; partial macro auto-saved"
+                    : "GD Bot: recording stopped after death; no input events to save");
             }
         }
         if (primaryPlayer && hitboxesOnDeathEnabled() && !hitboxesEnabled() && !g_noclipDeathDrawActive) {
@@ -2715,19 +2828,26 @@ class $modify(VETERPlayLayer, PlayLayer) {
         g_checkpointIndex = -1;
         g_autoRetryPending = false;
         if (g_noclipDeathDrawActive && !hitboxesEnabled()) {
-            toggleDebugDraw();
+            applyHitboxes(this);
         }
         g_noclipDeathDrawActive = false;
         PlayLayer::resetLevel();
+        // Some reset paths alter global timing/audio state. Restore the user's
+        // persistent values after the original game reset has completed.
+        applySpeedhack();
+        applyMusicPitch();
+        if (musicMuted()) applyMusicMute();
     }
 
     void onQuit() {
         if (g_botContinueSession) finalizeContinueSession();
+        else if (g_botMode == BotMode::Recording && !g_events.empty()) saveMacro();
         else stopBot(false);
-        if (auto* director = CCDirector::sharedDirector()) {
-            if (auto* scheduler = director->getScheduler()) scheduler->setTimeScale(1.0f);
-        }
+        // Do not force timeScale to 1 here: Speedhack is persistent by design and
+        // the next menu/level scene should keep the saved multiplier applied.
         PlayLayer::onQuit();
+        applySpeedhack();
+        applyMusicPitch();
     }
 };
 
@@ -2735,10 +2855,10 @@ $on_mod(Loaded) {
     if (auto* director = CCDirector::sharedDirector()) {
         g_originalAnimationInterval = director->getAnimationInterval();
         if (g_originalAnimationInterval <= 0.0) g_originalAnimationInterval = 1.0 / 60.0;
-        if (auto* scheduler = director->getScheduler()) scheduler->setTimeScale(1.0f);
     }
     applyFPSBypass();
+    applySpeedhack();
     if (musicMuted()) applyMusicMute();
     applyMusicPitch();
-    log::info("VETER v1.2.3 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
+    log::info("VETER v1.2.5 loaded: PlayerObject input recording, autosave, persistent Speedhack/audio sync, FPS and visual tools");
 }
