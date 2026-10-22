@@ -24,7 +24,7 @@
 using namespace geode::prelude;
 
 namespace {
-    constexpr int kMegaSoftPulseButtonTag = 0x4D534831;
+    constexpr int kVETERButtonTag = 0x4D534831;
     constexpr std::size_t kMaxMacroEvents = 500000;
     constexpr double kMaxMacroDurationSeconds = 24.0 * 60.0 * 60.0;
 
@@ -701,7 +701,7 @@ namespace {
     void setMusicSpeedSyncEnabled(bool enabled) {
         Mod::get()->setSavedValue("music-speed-sync", enabled);
         applyMusicPitch();
-        notify(std::string("MegaSoft Pulse: music speed sync ") +
+        notify(std::string("VETER: music speed sync ") +
             (enabled ? "ON (with Speedhack)" : "OFF"));
     }
 
@@ -718,7 +718,7 @@ namespace {
     void setMusicMuted(bool muted) {
         Mod::get()->setSavedValue("music-muted", muted);
         applyMusicMute();
-        notify(muted ? "MegaSoft Pulse: Music OFF" : "MegaSoft Pulse: Music ON");
+        notify(muted ? "VETER: Music OFF" : "VETER: Music ON");
     }
 
     void applySpeedhack() {
@@ -1089,25 +1089,25 @@ namespace {
     void toggleNoClip() {
         const bool enabled = !noclipEnabled();
         setNoclipEnabled(enabled);
-        log::info("MegaSoft Pulse: NoClip {}", enabled ? "ON" : "OFF");
-        notify(enabled ? "MegaSoft Pulse: NoClip ON" : "MegaSoft Pulse: NoClip OFF");
+        log::info("VETER: NoClip {}", enabled ? "ON" : "OFF");
+        notify(enabled ? "VETER: NoClip ON" : "VETER: NoClip OFF");
     }
 
     void toggleSpeedhack() {
         const bool enabled = !speedhackEnabled();
         setSpeedhackEnabled(enabled);
         applySpeedhack();
-        log::info("MegaSoft Pulse: Speedhack {} at {}x", enabled ? "ON" : "OFF", speedMultiplier());
-        notify(enabled ? "MegaSoft Pulse: Speedhack ON" : "MegaSoft Pulse: Speedhack OFF");
+        log::info("VETER: Speedhack {} at {}x", enabled ? "ON" : "OFF", speedMultiplier());
+        notify(enabled ? "VETER: Speedhack ON" : "VETER: Speedhack OFF");
     }
 }
 
-class MegaSoftToolsPopup;
-class MegaSoftUnlockPopup;
-class MegaSoftEditorPopup;
-class MegaSoftVisualsPopup;
+class VETERToolsPopup;
+class VETERUnlockPopup;
+class VETEREditorPopup;
+class VETERVisualsPopup;
 
-class MegaSoftPulsePopup : public Popup {
+class VETERPopup : public Popup {
 private:
     ButtonSprite* m_noClipSprite = nullptr;
     ButtonSprite* m_speedhackSprite = nullptr;
@@ -1123,7 +1123,7 @@ protected:
         // Compact grid; button labels are deliberately short so they stay inside
         // the popup on narrow Android screens as well as on desktop.
         if (!Popup::init(360.f, 450.f)) return false;
-        setTitle("MegaSoft Pulse");
+        setTitle("VETER");
 
         auto* menu = CCMenu::create();
         if (!menu || !m_mainLayer) return false;
@@ -1159,40 +1159,40 @@ protected:
         const float rowBot5 = size.height - 388.f;
 
         m_noClipSprite = addButton(noclipEnabled() ? "NOCLIP ON" : "NOCLIP OFF",
-            menu_selector(MegaSoftPulsePopup::onToggleNoClip), left, rowToggles,
+            menu_selector(VETERPopup::onToggleNoClip), left, rowToggles,
             noclipEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_speedhackSprite = addButton(speedhackEnabled() ? "SPEED ON" : "SPEED OFF",
-            menu_selector(MegaSoftPulsePopup::onToggleSpeedhack), right, rowToggles,
+            menu_selector(VETERPopup::onToggleSpeedhack), right, rowToggles,
             speedhackEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_musicSprite = addButton(musicMuted() ? "MUSIC OFF" : "MUSIC ON",
-            menu_selector(MegaSoftPulsePopup::onToggleMusic), left, rowMusic,
+            menu_selector(VETERPopup::onToggleMusic), left, rowMusic,
             musicMuted() ? "GJ_button_04.png" : "GJ_button_02.png");
         m_musicSyncSprite = addButton(musicSpeedSyncEnabled() ? "MUSIC SPD ON" : "MUSIC SPD OFF",
-            menu_selector(MegaSoftPulsePopup::onToggleMusicSync), right, rowMusic,
+            menu_selector(VETERPopup::onToggleMusicSync), right, rowMusic,
             musicSpeedSyncEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
 
-        addButton("-0.1x", menu_selector(MegaSoftPulsePopup::onSpeedDown), left, rowSpeed, "GJ_button_01.png");
-        m_speedValueSprite = addButton(speedLabel(), menu_selector(MegaSoftPulsePopup::onSpeedLabel), center, rowSpeed, "GJ_button_02.png");
-        addButton("+0.1x", menu_selector(MegaSoftPulsePopup::onSpeedUp), right, rowSpeed, "GJ_button_01.png");
+        addButton("-0.1x", menu_selector(VETERPopup::onSpeedDown), left, rowSpeed, "GJ_button_01.png");
+        m_speedValueSprite = addButton(speedLabel(), menu_selector(VETERPopup::onSpeedLabel), center, rowSpeed, "GJ_button_02.png");
+        addButton("+0.1x", menu_selector(VETERPopup::onSpeedUp), right, rowSpeed, "GJ_button_01.png");
 
-        addButton("BOT REC", menu_selector(MegaSoftPulsePopup::onRecord), left, rowBot1, "GJ_button_01.png");
-        addButton("BOT STOP", menu_selector(MegaSoftPulsePopup::onStopBot), right, rowBot1, "GJ_button_04.png");
-        addButton("BOT PLAY", menu_selector(MegaSoftPulsePopup::onPlay), rowBot2Left, rowBot2, "GJ_button_01.png");
-        addButton("CONTINUE", menu_selector(MegaSoftPulsePopup::onContinue), center, rowBot2, "GJ_button_02.png");
-        addButton("BOT SAVE", menu_selector(MegaSoftPulsePopup::onSave), rowBot2Right, rowBot2, "GJ_button_02.png");
-        addButton("BOT LOAD", menu_selector(MegaSoftPulsePopup::onLoad), left, rowBot3, "GJ_button_02.png");
-        addButton("BOT STATUS", menu_selector(MegaSoftPulsePopup::onBotStatus), right, rowBot3, "GJ_button_01.png");
+        addButton("BOT REC", menu_selector(VETERPopup::onRecord), left, rowBot1, "GJ_button_01.png");
+        addButton("BOT STOP", menu_selector(VETERPopup::onStopBot), right, rowBot1, "GJ_button_04.png");
+        addButton("BOT PLAY", menu_selector(VETERPopup::onPlay), rowBot2Left, rowBot2, "GJ_button_01.png");
+        addButton("CONTINUE", menu_selector(VETERPopup::onContinue), center, rowBot2, "GJ_button_02.png");
+        addButton("BOT SAVE", menu_selector(VETERPopup::onSave), rowBot2Right, rowBot2, "GJ_button_02.png");
+        addButton("BOT LOAD", menu_selector(VETERPopup::onLoad), left, rowBot3, "GJ_button_02.png");
+        addButton("BOT STATUS", menu_selector(VETERPopup::onBotStatus), right, rowBot3, "GJ_button_01.png");
 
         m_botLoopSprite = addButton(botLoopEnabled() ? "BOT LOOP ON" : "BOT LOOP OFF",
-            menu_selector(MegaSoftPulsePopup::onToggleBotLoop), left, rowBot4,
+            menu_selector(VETERPopup::onToggleBotLoop), left, rowBot4,
             botLoopEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_botSlotSprite = addButton("BOT SLOT " + std::to_string(botMacroSlot()),
-            menu_selector(MegaSoftPulsePopup::onNextBotSlot), right, rowBot4, "GJ_button_01.png");
-        addButton("-0.25x", menu_selector(MegaSoftPulsePopup::onBotRateDown), left, rowBot5, "GJ_button_01.png");
-        m_botRateSprite = addButton(botPlaybackRateLabel(), menu_selector(MegaSoftPulsePopup::onBotRateInfo), center, rowBot5, "GJ_button_02.png");
-        addButton("+0.25x", menu_selector(MegaSoftPulsePopup::onBotRateUp), right, rowBot5, "GJ_button_01.png");
+            menu_selector(VETERPopup::onNextBotSlot), right, rowBot4, "GJ_button_01.png");
+        addButton("-0.25x", menu_selector(VETERPopup::onBotRateDown), left, rowBot5, "GJ_button_01.png");
+        m_botRateSprite = addButton(botPlaybackRateLabel(), menu_selector(VETERPopup::onBotRateInfo), center, rowBot5, "GJ_button_02.png");
+        addButton("+0.25x", menu_selector(VETERPopup::onBotRateUp), right, rowBot5, "GJ_button_01.png");
 
-        addButton("MORE TOOLS", menu_selector(MegaSoftPulsePopup::onMore),
+        addButton("MORE TOOLS", menu_selector(VETERPopup::onMore),
             center, 27.f, "GJ_button_01.png");
         return true;
     }
@@ -1200,8 +1200,8 @@ protected:
 public:
     void onMore(CCObject*);
 
-    static MegaSoftPulsePopup* create() {
-        auto* popup = new MegaSoftPulsePopup();
+    static VETERPopup* create() {
+        auto* popup = new VETERPopup();
         if (popup && popup->init()) {
             popup->autorelease();
             return popup;
@@ -1240,14 +1240,14 @@ public:
         setSpeedMultiplier(speedMultiplier() - 0.1f);
         if (speedhackEnabled()) applySpeedhack();
         if (m_speedValueSprite) m_speedValueSprite->setString(speedLabel().c_str());
-        notify("MegaSoft Pulse: speed set to " + speedLabel().substr(6));
+        notify("VETER: speed set to " + speedLabel().substr(6));
     }
 
     void onSpeedUp(CCObject*) {
         setSpeedMultiplier(speedMultiplier() + 0.1f);
         if (speedhackEnabled()) applySpeedhack();
         if (m_speedValueSprite) m_speedValueSprite->setString(speedLabel().c_str());
-        notify("MegaSoft Pulse: speed set to " + speedLabel().substr(6));
+        notify("VETER: speed set to " + speedLabel().substr(6));
     }
 
     void onRecord(CCObject*) {
@@ -1468,7 +1468,7 @@ public:
     }
 };
 
-class MegaSoftToolsPopup : public Popup {
+class VETERToolsPopup : public Popup {
 private:
     ButtonSprite* m_fpsEnabledSprite = nullptr;
     ButtonSprite* m_fpsValueSprite = nullptr;
@@ -1507,7 +1507,7 @@ private:
 protected:
     bool init() {
         if (!Popup::init(400.f, 545.f)) return false;
-        setTitle("MegaSoft Pulse - Tools");
+        setTitle("VETER - Tools");
         auto* menu = CCMenu::create();
         if (!menu || !m_mainLayer) return false;
         menu->setPosition({0.f, 0.f});
@@ -1536,57 +1536,57 @@ protected:
         const float row8 = size.height - 366.f;
         const float row9 = size.height - 410.f;
         m_fpsEnabledSprite = addButton(fpsBypassEnabled() ? "FPS ON" : "FPS OFF",
-            menu_selector(MegaSoftToolsPopup::onToggleFPS), left, row1,
+            menu_selector(VETERToolsPopup::onToggleFPS), left, row1,
             fpsBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_retrySprite = addButton(autoRetryEnabled() ? "RETRY ON" : "RETRY OFF",
-            menu_selector(MegaSoftToolsPopup::onToggleRetry), right, row1,
+            menu_selector(VETERToolsPopup::onToggleRetry), right, row1,
             autoRetryEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        addButton("FPS -30", menu_selector(MegaSoftToolsPopup::onFPSDown), left, row2, "GJ_button_01.png");
-        m_fpsValueSprite = addButton("", menu_selector(MegaSoftToolsPopup::onFPSInfo), center, row2, "GJ_button_02.png");
-        addButton("FPS +30", menu_selector(MegaSoftToolsPopup::onFPSUp), right, row2, "GJ_button_01.png");
+        addButton("FPS -30", menu_selector(VETERToolsPopup::onFPSDown), left, row2, "GJ_button_01.png");
+        m_fpsValueSprite = addButton("", menu_selector(VETERToolsPopup::onFPSInfo), center, row2, "GJ_button_02.png");
+        addButton("FPS +30", menu_selector(VETERToolsPopup::onFPSUp), right, row2, "GJ_button_01.png");
         m_hitboxSprite = addButton(hitboxesEnabled() ? "HITBOXES ON" : "HITBOXES OFF",
-            menu_selector(MegaSoftToolsPopup::onToggleHitboxes), left, row3,
+            menu_selector(VETERToolsPopup::onToggleHitboxes), left, row3,
             hitboxesEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_cpsSprite = addButton(cpsEnabled() ? "CPS ON" : "CPS OFF",
-            menu_selector(MegaSoftToolsPopup::onToggleCPS), right, row3,
+            menu_selector(VETERToolsPopup::onToggleCPS), right, row3,
             cpsEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_practiceMusicSprite = addButton(practiceMusicEnabled() ? "PRACTICE MUSIC ON" : "PRACTICE MUSIC OFF",
-            menu_selector(MegaSoftToolsPopup::onTogglePracticeMusic), center, row4,
+            menu_selector(VETERToolsPopup::onTogglePracticeMusic), center, row4,
             practiceMusicEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_noclipLimitSprite = addButton(noclipLimitEnabled() ? "NC LIMIT ON" : "NC LIMIT OFF",
-            menu_selector(MegaSoftToolsPopup::onToggleNoclipLimit), left, row5,
+            menu_selector(VETERToolsPopup::onToggleNoclipLimit), left, row5,
             noclipLimitEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_noclipLimitValueSprite = addButton("", menu_selector(MegaSoftToolsPopup::onChangeNoclipMax), right, row5, "GJ_button_01.png");
+        m_noclipLimitValueSprite = addButton("", menu_selector(VETERToolsPopup::onChangeNoclipMax), right, row5, "GJ_button_01.png");
         m_noDeathEffectSprite = addButton(noDeathEffectEnabled() ? "NO DEATH FX ON" : "NO DEATH FX OFF",
-            menu_selector(MegaSoftToolsPopup::onToggleNoDeathEffect), left, row6,
+            menu_selector(VETERToolsPopup::onToggleNoDeathEffect), left, row6,
             noDeathEffectEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_hitboxesOnDeathSprite = addButton(hitboxesOnDeathEnabled() ? "DEATH HITBOX ON" : "DEATH HITBOX OFF",
-            menu_selector(MegaSoftToolsPopup::onToggleHitboxesOnDeath), right, row6,
+            menu_selector(VETERToolsPopup::onToggleHitboxesOnDeath), right, row6,
             hitboxesOnDeathEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_frameStepSprite = addButton(frameStepEnabled() ? "FRAME STEP ON" : "FRAME STEP OFF",
-            menu_selector(MegaSoftToolsPopup::onToggleFrameStep), left, row7,
+            menu_selector(VETERToolsPopup::onToggleFrameStep), left, row7,
             frameStepEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        addButton("STEP +1", menu_selector(MegaSoftToolsPopup::onStepFrame), right, row7, "GJ_button_01.png");
-        addButton("CP PREV", menu_selector(MegaSoftToolsPopup::onPreviousCheckpoint), left, row8, "GJ_button_01.png");
-        addButton("CP NEXT", menu_selector(MegaSoftToolsPopup::onNextCheckpoint), right, row8, "GJ_button_01.png");
+        addButton("STEP +1", menu_selector(VETERToolsPopup::onStepFrame), right, row7, "GJ_button_01.png");
+        addButton("CP PREV", menu_selector(VETERToolsPopup::onPreviousCheckpoint), left, row8, "GJ_button_01.png");
+        addButton("CP NEXT", menu_selector(VETERToolsPopup::onNextCheckpoint), right, row8, "GJ_button_01.png");
         m_layoutModeSprite = addButton(layoutModeEnabled() ? "LAYOUT GRID ON" : "LAYOUT GRID OFF",
-            menu_selector(MegaSoftToolsPopup::onToggleLayoutMode), center, row9,
+            menu_selector(VETERToolsPopup::onToggleLayoutMode), center, row9,
             layoutModeEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_confirmExitSprite = addButton(confirmExitEnabled() ? "CONFIRM EXIT ON" : "CONFIRM EXIT OFF",
-            menu_selector(MegaSoftToolsPopup::onToggleConfirmExit), left, 95.f,
+            menu_selector(VETERToolsPopup::onToggleConfirmExit), left, 95.f,
             confirmExitEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        addButton("VISUALS", menu_selector(MegaSoftToolsPopup::onVisuals), center, 95.f, "GJ_button_01.png");
-        addButton("EDITOR", menu_selector(MegaSoftToolsPopup::onEditor), right, 95.f, "GJ_button_01.png");
-        addButton("FAST RESET", menu_selector(MegaSoftToolsPopup::onFastReset), left, 60.f, "GJ_button_01.png");
-        addButton("UNLOCKS", menu_selector(MegaSoftToolsPopup::onUnlocks), right, 60.f, "GJ_button_01.png");
-        addButton("BACK", menu_selector(MegaSoftToolsPopup::onBack), center, 27.f, "GJ_button_01.png");
+        addButton("VISUALS", menu_selector(VETERToolsPopup::onVisuals), center, 95.f, "GJ_button_01.png");
+        addButton("EDITOR", menu_selector(VETERToolsPopup::onEditor), right, 95.f, "GJ_button_01.png");
+        addButton("FAST RESET", menu_selector(VETERToolsPopup::onFastReset), left, 60.f, "GJ_button_01.png");
+        addButton("UNLOCKS", menu_selector(VETERToolsPopup::onUnlocks), right, 60.f, "GJ_button_01.png");
+        addButton("BACK", menu_selector(VETERToolsPopup::onBack), center, 27.f, "GJ_button_01.png");
         refreshLabels();
         return true;
     }
 
 public:
-    static MegaSoftToolsPopup* create() {
-        auto* popup = new MegaSoftToolsPopup();
+    static VETERToolsPopup* create() {
+        auto* popup = new VETERToolsPopup();
         if (popup && popup->init()) { popup->autorelease(); return popup; }
         delete popup;
         return nullptr;
@@ -1596,7 +1596,7 @@ public:
         setFPSBypassEnabled(!fpsBypassEnabled());
         applyFPSBypass();
         refreshLabels();
-        notify(std::string("MegaSoft Pulse: FPS bypass ") + (fpsBypassEnabled() ? "ON" : "OFF"));
+        notify(std::string("VETER: FPS bypass ") + (fpsBypassEnabled() ? "ON" : "OFF"));
     }
     void onFPSDown(CCObject*) {
         setTargetFPS(targetFPS() - 30);
@@ -1614,7 +1614,7 @@ public:
     void onToggleRetry(CCObject*) {
         setAutoRetryEnabled(!autoRetryEnabled());
         refreshLabels();
-        notify(std::string("MegaSoft Pulse: Auto-Retry ") + (autoRetryEnabled() ? "ON" : "OFF"));
+        notify(std::string("VETER: Auto-Retry ") + (autoRetryEnabled() ? "ON" : "OFF"));
     }
     void onToggleHitboxes(CCObject*) {
         const bool enabled = !hitboxesEnabled();
@@ -1625,13 +1625,13 @@ public:
             g_debugDrawLayer = layer;
         }
         refreshLabels();
-        notify(enabled ? "MegaSoft Pulse: Hitboxes ON" : "MegaSoft Pulse: Hitboxes OFF");
+        notify(enabled ? "VETER: Hitboxes ON" : "VETER: Hitboxes OFF");
     }
     void onToggleCPS(CCObject*) {
         setCPSEnabled(!cpsEnabled());
         if (!cpsEnabled() && g_cpsLabel) g_cpsLabel->setVisible(false);
         refreshLabels();
-        notify(std::string("MegaSoft Pulse: CPS ") + (cpsEnabled() ? "ON" : "OFF"));
+        notify(std::string("VETER: CPS ") + (cpsEnabled() ? "ON" : "OFF"));
     }
     void onTogglePracticeMusic(CCObject*) {
         auto* layer = PlayLayer::get();
@@ -1728,11 +1728,11 @@ public:
     void onVisuals(CCObject*);
     void onBack(CCObject*) {
         onClose(nullptr);
-        if (auto* popup = MegaSoftPulsePopup::create()) popup->show();
+        if (auto* popup = VETERPopup::create()) popup->show();
     }
 };
 
-class MegaSoftUnlockPopup : public Popup {
+class VETERUnlockPopup : public Popup {
 private:
     ButtonSprite* m_unlockAllSprite = nullptr;
     ButtonSprite* m_iconKitSprite = nullptr;
@@ -1753,7 +1753,7 @@ private:
 protected:
     bool init() {
         if (!Popup::init(380.f, 365.f)) return false;
-        setTitle("MegaSoft Pulse - Unlocks");
+        setTitle("VETER - Unlocks");
         auto* menu = CCMenu::create();
         if (!menu || !m_mainLayer) return false;
         menu->setPosition({0.f, 0.f});
@@ -1771,26 +1771,26 @@ protected:
         const float left = size.width * 0.36f;
         const float center = size.width * 0.50f;
         const float right = size.width * 0.64f;
-        m_unlockAllSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleUnlockAll), center, size.height - 58.f,
+        m_unlockAllSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleUnlockAll), center, size.height - 58.f,
             unlockAllEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_iconKitSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleIconKit), left, size.height - 112.f,
+        m_iconKitSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleIconKit), left, size.height - 112.f,
             iconKitBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_mainLevelsSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleMainLevels), right, size.height - 112.f,
+        m_mainLevelsSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleMainLevels), right, size.height - 112.f,
             mainLevelsBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_shopSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleShop), left, size.height - 166.f,
+        m_shopSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleShop), left, size.height - 166.f,
             shopUnlockBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_vaultSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleVault), right, size.height - 166.f,
+        m_vaultSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleVault), right, size.height - 166.f,
             vaultBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_textLengthSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleTextLength), center, size.height - 220.f,
+        m_textLengthSprite = addButton("", menu_selector(VETERUnlockPopup::onToggleTextLength), center, size.height - 220.f,
             textLengthBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        addButton("INFO", menu_selector(MegaSoftUnlockPopup::onInfo), left, size.height - 275.f, "GJ_button_01.png");
-        addButton("BACK", menu_selector(MegaSoftUnlockPopup::onBack), right, size.height - 275.f, "GJ_button_01.png");
+        addButton("INFO", menu_selector(VETERUnlockPopup::onInfo), left, size.height - 275.f, "GJ_button_01.png");
+        addButton("BACK", menu_selector(VETERUnlockPopup::onBack), right, size.height - 275.f, "GJ_button_01.png");
         refreshLabels();
         return true;
     }
 public:
-    static MegaSoftUnlockPopup* create() {
-        auto* popup = new MegaSoftUnlockPopup();
+    static VETERUnlockPopup* create() {
+        auto* popup = new VETERUnlockPopup();
         if (popup && popup->init()) { popup->autorelease(); return popup; }
         delete popup;
         return nullptr;
@@ -1825,25 +1825,25 @@ public:
     void onBack(CCObject*);
 };
 
-void MegaSoftToolsPopup::onUnlocks(CCObject*) {
+void VETERToolsPopup::onUnlocks(CCObject*) {
     onClose(nullptr);
-    if (auto* popup = MegaSoftUnlockPopup::create()) popup->show();
+    if (auto* popup = VETERUnlockPopup::create()) popup->show();
 }
 
-void MegaSoftUnlockPopup::onBack(CCObject*) {
+void VETERUnlockPopup::onBack(CCObject*) {
     onClose(nullptr);
-    if (auto* popup = MegaSoftToolsPopup::create()) popup->show();
+    if (auto* popup = VETERToolsPopup::create()) popup->show();
 }
 
-void MegaSoftPulsePopup::onMore(CCObject*) {
+void VETERPopup::onMore(CCObject*) {
     onClose(nullptr);
-    if (auto* popup = MegaSoftToolsPopup::create()) popup->show();
+    if (auto* popup = VETERToolsPopup::create()) popup->show();
 }
 
-class MegaSoftEditorPopup;
+class VETEREditorPopup;
 void reopenEditorPopup();
 
-class MegaSoftAbsolutePositionPopup : public Popup, public TextInputDelegate {
+class VETERAbsolutePositionPopup : public Popup, public TextInputDelegate {
 private:
     CCTextInputNode* m_xInput = nullptr;
     CCTextInputNode* m_yInput = nullptr;
@@ -1891,14 +1891,14 @@ protected:
             item->setPosition({x, 34.f});
             menu->addChild(item);
         };
-        addButton("APPLY", menu_selector(MegaSoftAbsolutePositionPopup::onApply), size.width * 0.32f);
-        addButton("BACK", menu_selector(MegaSoftAbsolutePositionPopup::onBack), size.width * 0.68f);
+        addButton("APPLY", menu_selector(VETERAbsolutePositionPopup::onApply), size.width * 0.32f);
+        addButton("BACK", menu_selector(VETERAbsolutePositionPopup::onBack), size.width * 0.68f);
         return true;
     }
 
 public:
-    static MegaSoftAbsolutePositionPopup* create() {
-        auto* popup = new MegaSoftAbsolutePositionPopup();
+    static VETERAbsolutePositionPopup* create() {
+        auto* popup = new VETERAbsolutePositionPopup();
         if (popup && popup->init()) { popup->autorelease(); return popup; }
         delete popup;
         return nullptr;
@@ -1948,7 +1948,7 @@ public:
     }
 };
 
-class MegaSoftEditorPopup : public Popup {
+class VETEREditorPopup : public Popup {
 private:
     ButtonSprite* m_moveStepSprite = nullptr;
 
@@ -2005,7 +2005,7 @@ private:
 protected:
     bool init() {
         if (!Popup::init(400.f, 450.f)) return false;
-        setTitle("MegaSoft Pulse - Editor");
+        setTitle("VETER - Editor");
         auto* menu = CCMenu::create();
         if (!menu || !m_mainLayer) return false;
         menu->setPosition({0.f, 0.f});
@@ -2030,28 +2030,28 @@ protected:
         const float row4 = size.height - 186.f;
         const float row5 = size.height - 230.f;
         const float row6 = size.height - 274.f;
-        addButton("X -", menu_selector(MegaSoftEditorPopup::onXMinus), left, row1, "GJ_button_01.png");
-        addButton("X +", menu_selector(MegaSoftEditorPopup::onXPlus), right, row1, "GJ_button_01.png");
-        addButton("Y -", menu_selector(MegaSoftEditorPopup::onYMinus), left, row2, "GJ_button_01.png");
-        addButton("Y +", menu_selector(MegaSoftEditorPopup::onYPlus), right, row2, "GJ_button_01.png");
-        addButton("ROT -15", menu_selector(MegaSoftEditorPopup::onRotateMinus15), left, row3, "GJ_button_01.png");
-        addButton("ROT +15", menu_selector(MegaSoftEditorPopup::onRotatePlus15), right, row3, "GJ_button_01.png");
-        addButton("ROT -90", menu_selector(MegaSoftEditorPopup::onRotateMinus90), left, row4, "GJ_button_01.png");
-        addButton("ROT +90", menu_selector(MegaSoftEditorPopup::onRotatePlus90), right, row4, "GJ_button_01.png");
-        addButton("SCALE -", menu_selector(MegaSoftEditorPopup::onScaleMinus), left, row5, "GJ_button_01.png");
-        addButton("SCALE +", menu_selector(MegaSoftEditorPopup::onScalePlus), right, row5, "GJ_button_01.png");
-        m_moveStepSprite = addButton("MOVE STEP 1.0", menu_selector(MegaSoftEditorPopup::onCycleMoveStep), center, row6, "GJ_button_02.png");
-        addButton("ABSOLUTE X/Y", menu_selector(MegaSoftEditorPopup::onAbsolutePosition), center, size.height - 322.f, "GJ_button_02.png");
-        addButton("COPY XFORM", menu_selector(MegaSoftEditorPopup::onCopyTransform), left, size.height - 365.f, "GJ_button_01.png");
-        addButton("PASTE XFORM", menu_selector(MegaSoftEditorPopup::onPasteTransform), right, size.height - 365.f, "GJ_button_01.png");
-        addButton("INFO", menu_selector(MegaSoftEditorPopup::onInfo), left, 36.f, "GJ_button_01.png");
-        addButton("BACK", menu_selector(MegaSoftEditorPopup::onBack), right, 36.f, "GJ_button_01.png");
+        addButton("X -", menu_selector(VETEREditorPopup::onXMinus), left, row1, "GJ_button_01.png");
+        addButton("X +", menu_selector(VETEREditorPopup::onXPlus), right, row1, "GJ_button_01.png");
+        addButton("Y -", menu_selector(VETEREditorPopup::onYMinus), left, row2, "GJ_button_01.png");
+        addButton("Y +", menu_selector(VETEREditorPopup::onYPlus), right, row2, "GJ_button_01.png");
+        addButton("ROT -15", menu_selector(VETEREditorPopup::onRotateMinus15), left, row3, "GJ_button_01.png");
+        addButton("ROT +15", menu_selector(VETEREditorPopup::onRotatePlus15), right, row3, "GJ_button_01.png");
+        addButton("ROT -90", menu_selector(VETEREditorPopup::onRotateMinus90), left, row4, "GJ_button_01.png");
+        addButton("ROT +90", menu_selector(VETEREditorPopup::onRotatePlus90), right, row4, "GJ_button_01.png");
+        addButton("SCALE -", menu_selector(VETEREditorPopup::onScaleMinus), left, row5, "GJ_button_01.png");
+        addButton("SCALE +", menu_selector(VETEREditorPopup::onScalePlus), right, row5, "GJ_button_01.png");
+        m_moveStepSprite = addButton("MOVE STEP 1.0", menu_selector(VETEREditorPopup::onCycleMoveStep), center, row6, "GJ_button_02.png");
+        addButton("ABSOLUTE X/Y", menu_selector(VETEREditorPopup::onAbsolutePosition), center, size.height - 322.f, "GJ_button_02.png");
+        addButton("COPY XFORM", menu_selector(VETEREditorPopup::onCopyTransform), left, size.height - 365.f, "GJ_button_01.png");
+        addButton("PASTE XFORM", menu_selector(VETEREditorPopup::onPasteTransform), right, size.height - 365.f, "GJ_button_01.png");
+        addButton("INFO", menu_selector(VETEREditorPopup::onInfo), left, 36.f, "GJ_button_01.png");
+        addButton("BACK", menu_selector(VETEREditorPopup::onBack), right, 36.f, "GJ_button_01.png");
         refreshLabels();
         return true;
     }
 public:
-    static MegaSoftEditorPopup* create() {
-        auto* popup = new MegaSoftEditorPopup();
+    static VETEREditorPopup* create() {
+        auto* popup = new VETEREditorPopup();
         if (popup && popup->init()) { popup->autorelease(); return popup; }
         delete popup;
         return nullptr;
@@ -2121,22 +2121,22 @@ public:
     void onCycleMoveStep(CCObject*) { cycleMoveStep(); }
     void onAbsolutePosition(CCObject*) {
         onClose(nullptr);
-        if (auto* popup = MegaSoftAbsolutePositionPopup::create()) popup->show();
+        if (auto* popup = VETERAbsolutePositionPopup::create()) popup->show();
     }
     void onInfo(CCObject*) {
         FLAlertLayer::create("Editor helpers", "Select objects first. X/Y nudge the selection by 0.1, 1 or 10 units; MOVE STEP changes the amount. ROT buttons rotate selected objects by 15 or 90 degrees. SCALE changes uniform scale by 0.1. ABSOLUTE X/Y opens numeric fields to set the selected objects at the exact entered coordinate. COPY TRANSFORM saves position/rotation/scale from the first selected object; PASTE TRANSFORM applies that transform to every selected object.", "OK")->show();
     }
     void onBack(CCObject*) {
         onClose(nullptr);
-        if (auto* popup = MegaSoftToolsPopup::create()) popup->show();
+        if (auto* popup = VETERToolsPopup::create()) popup->show();
     }
 };
 
 void reopenEditorPopup() {
-    if (auto* popup = MegaSoftEditorPopup::create()) popup->show();
+    if (auto* popup = VETEREditorPopup::create()) popup->show();
 }
 
-class MegaSoftVisualsPopup : public Popup {
+class VETERVisualsPopup : public Popup {
     ButtonSprite* m_trajectorySprite = nullptr;
     ButtonSprite* m_predictionSprite = nullptr;
     ButtonSprite* m_clicksSprite = nullptr;
@@ -2156,7 +2156,7 @@ class MegaSoftVisualsPopup : public Popup {
 protected:
     bool init() {
         if (!Popup::init(390.f, 425.f)) return false;
-        setTitle("MegaSoft Pulse - Visuals");
+        setTitle("VETER - Visuals");
         auto* menu = CCMenu::create();
         if (!menu || !m_mainLayer) return false;
         menu->setPosition({0.f, 0.f});
@@ -2175,28 +2175,28 @@ protected:
             menu->addChild(item);
             return sprite;
         };
-        m_trajectorySprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleTrajectory), left, size.height - 58.f,
+        m_trajectorySprite = addButton("", menu_selector(VETERVisualsPopup::onToggleTrajectory), left, size.height - 58.f,
             trajectoryEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_predictionSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onTogglePrediction), right, size.height - 58.f,
+        m_predictionSprite = addButton("", menu_selector(VETERVisualsPopup::onTogglePrediction), right, size.height - 58.f,
             trajectoryPredictorEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_clicksSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleClicks), left, size.height - 112.f,
+        m_clicksSprite = addButton("", menu_selector(VETERVisualsPopup::onToggleClicks), left, size.height - 112.f,
             showClicksEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_fpsCounterSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleFPSCounter), right, size.height - 112.f,
+        m_fpsCounterSprite = addButton("", menu_selector(VETERVisualsPopup::onToggleFPSCounter), right, size.height - 112.f,
             fpsCounterEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_customMusicSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleCustomMusic), center, size.height - 166.f,
+        m_customMusicSprite = addButton("", menu_selector(VETERVisualsPopup::onToggleCustomMusic), center, size.height - 166.f,
             customMenuMusicEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_transparentPauseSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleTransparentPause), left, size.height - 220.f,
+        m_transparentPauseSprite = addButton("", menu_selector(VETERVisualsPopup::onToggleTransparentPause), left, size.height - 220.f,
             transparentPauseEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        m_hidePauseSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleHidePause), right, size.height - 220.f,
+        m_hidePauseSprite = addButton("", menu_selector(VETERVisualsPopup::onToggleHidePause), right, size.height - 220.f,
             hidePauseButtonEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
-        addButton("MUSIC FILE INFO", menu_selector(MegaSoftVisualsPopup::onMusicInfo), center, size.height - 278.f, "GJ_button_01.png");
-        addButton("BACK", menu_selector(MegaSoftVisualsPopup::onBack), center, 28.f, "GJ_button_01.png");
+        addButton("MUSIC FILE INFO", menu_selector(VETERVisualsPopup::onMusicInfo), center, size.height - 278.f, "GJ_button_01.png");
+        addButton("BACK", menu_selector(VETERVisualsPopup::onBack), center, 28.f, "GJ_button_01.png");
         refreshLabels();
         return true;
     }
 public:
-    static MegaSoftVisualsPopup* create() {
-        auto* popup = new MegaSoftVisualsPopup();
+    static VETERVisualsPopup* create() {
+        auto* popup = new VETERVisualsPopup();
         if (popup && popup->init()) { popup->autorelease(); return popup; }
         delete popup;
         return nullptr;
@@ -2243,7 +2243,7 @@ public:
         if (!customMenuMusicEnabled()) {
             std::error_code ec;
             if (!std::filesystem::exists(customMenuMusicFile(), ec) || ec) {
-                notify("Copy custom-menu.mp3 into MegaSoft Pulse save folder first");
+                notify("Copy custom-menu.mp3 into VETER save folder first");
                 return;
             }
             setCustomMenuMusicEnabled(true);
@@ -2270,24 +2270,24 @@ public:
     }
     void onBack(CCObject*) {
         onClose(nullptr);
-        if (auto* popup = MegaSoftToolsPopup::create()) popup->show();
+        if (auto* popup = VETERToolsPopup::create()) popup->show();
     }
 };
 
-void MegaSoftToolsPopup::onEditor(CCObject*) {
+void VETERToolsPopup::onEditor(CCObject*) {
     onClose(nullptr);
-    if (auto* popup = MegaSoftEditorPopup::create()) popup->show();
+    if (auto* popup = VETEREditorPopup::create()) popup->show();
 }
 
-void MegaSoftToolsPopup::onVisuals(CCObject*) {
+void VETERToolsPopup::onVisuals(CCObject*) {
     onClose(nullptr);
-    if (auto* popup = MegaSoftVisualsPopup::create()) popup->show();
+    if (auto* popup = VETERVisualsPopup::create()) popup->show();
 }
 
-class MegaSoftPulseOpenDelegate : public CCNode {
+class VETEROpenDelegate : public CCNode {
 public:
-    static MegaSoftPulseOpenDelegate* create() {
-        auto* node = new MegaSoftPulseOpenDelegate();
+    static VETEROpenDelegate* create() {
+        auto* node = new VETEROpenDelegate();
         if (node && node->init()) {
             node->autorelease();
             return node;
@@ -2297,26 +2297,26 @@ public:
     }
 
     void onOpen(CCObject*) {
-        if (auto* popup = MegaSoftPulsePopup::create()) popup->show();
+        if (auto* popup = VETERPopup::create()) popup->show();
     }
 };
 
 namespace {
-    void attachMegaSoftPulseButton(CCScene* scene) {
-        if (!scene || scene->getChildByTag(kMegaSoftPulseButtonTag)) return;
+    void attachVETERButton(CCScene* scene) {
+        if (!scene || scene->getChildByTag(kVETERButtonTag)) return;
 
         auto* menu = CCMenu::create();
-        auto* delegate = MegaSoftPulseOpenDelegate::create();
+        auto* delegate = VETEROpenDelegate::create();
         auto* sprite = ButtonSprite::create("MSP", "bigFont.fnt", "GJ_button_01.png", 0.75f);
         if (!menu || !delegate || !sprite) return;
 
         auto* item = CCMenuItemSpriteExtra::create(
-            sprite, delegate, menu_selector(MegaSoftPulseOpenDelegate::onOpen)
+            sprite, delegate, menu_selector(VETEROpenDelegate::onOpen)
         );
         if (!item) return;
 
         const auto size = CCDirector::sharedDirector()->getWinSize();
-        menu->setTag(kMegaSoftPulseButtonTag);
+        menu->setTag(kVETERButtonTag);
         menu->setPosition({0.f, 0.f});
         item->setPosition({size.width - 52.f, size.height - 52.f});
         item->setScale(0.68f);
@@ -2327,7 +2327,7 @@ namespace {
 }
 
 // Local-only unlock-status overrides. These do not add currency or alter server data.
-class $modify(MegaSoftPulseGameStats, GameStatsManager) {
+class $modify(VETERGameStats, GameStatsManager) {
     bool isItemUnlocked(UnlockType type, int id) {
         if (unlockAllEnabled()) return true;
         // The first seven unlock categories in GD 2.2081 are the seven icon forms.
@@ -2358,14 +2358,14 @@ class $modify(MegaSoftPulseGameStats, GameStatsManager) {
     }
 };
 
-class $modify(MegaSoftPulsePlayerObject, PlayerObject) {
+class $modify(VETERPlayerObject, PlayerObject) {
     void playDeathEffect() {
         if (noDeathEffectEnabled()) return;
         PlayerObject::playDeathEffect();
     }
 };
 
-class $modify(MegaSoftPulsePauseLayer, PauseLayer) {
+class $modify(VETERPauseLayer, PauseLayer) {
     void customSetup() {
         PauseLayer::customSetup();
         if (transparentPauseEnabled()) setPauseSpritesAlpha(this, 150);
@@ -2388,7 +2388,7 @@ class $modify(MegaSoftPulsePauseLayer, PauseLayer) {
 
 // Preserve the pitch requested by Geometry Dash, while applying the Speedhack
 // multiplier to the music channel when Music Speed Sync is enabled.
-class $modify(MegaSoftPulseMusicAudioEngine, FMODAudioEngine) {
+class $modify(VETERMusicAudioEngine, FMODAudioEngine) {
     void setChannelPitch(int id, AudioTargetType type, float pitch) {
         if (type == AudioTargetType::MusicChannel && std::isfinite(pitch) && pitch > 0.0f) {
             if (!g_settingMusicPitch) {
@@ -2401,8 +2401,8 @@ class $modify(MegaSoftPulseMusicAudioEngine, FMODAudioEngine) {
     }
 };
 
-// Add the MegaSoft Pulse quick-open button to each new scene, not just gameplay.
-class $modify(MegaSoftPulseDirector, CCDirector) {
+// Add the VETER quick-open button to each new scene, not just gameplay.
+class $modify(VETERDirector, CCDirector) {
     void drawScene() {
         // Detect level transitions even if no more input arrives. This prevents
         // GD Bot from staying in RECORDING/PLAYING after its PlayLayer disappears.
@@ -2424,7 +2424,7 @@ class $modify(MegaSoftPulseDirector, CCDirector) {
         if (musicMuted()) applyMusicMute();
         applyMusicPitch();
         if (auto* scene = this->getRunningScene()) {
-            attachMegaSoftPulseButton(scene);
+            attachVETERButton(scene);
             updateLayoutGrid(scene);
         }
         CCDirector::drawScene();
@@ -2433,7 +2433,7 @@ class $modify(MegaSoftPulseDirector, CCDirector) {
 
 // Capture input at Geometry Dash's common input dispatcher. This is more
 // reliable for on-screen/touch controls than relying only on PlayerObject hooks.
-class $modify(MegaSoftPulseBaseGameLayer, GJBaseGameLayer) {
+class $modify(VETERBaseGameLayer, GJBaseGameLayer) {
     void handleButton(bool down, int button, bool isPlayer1) {
         if (isPlayer1 && !g_injectedInput && g_botMode == BotMode::Continuing) {
             // User gameplay inputs during Continue replay would alter the route before
@@ -2449,7 +2449,7 @@ class $modify(MegaSoftPulseBaseGameLayer, GJBaseGameLayer) {
     }
 };
 
-class $modify(MegaSoftPulsePlayLayer, PlayLayer) {
+class $modify(VETERPlayLayer, PlayLayer) {
     void update(float dt) {
         // In frame-step mode, allow only one PlayLayer update per button press.
         if (frameStepEnabled() && !g_frameStepPending) return;
@@ -2606,5 +2606,5 @@ $on_mod(Loaded) {
     applyFPSBypass();
     if (musicMuted()) applyMusicMute();
     applyMusicPitch();
-    log::info("MegaSoft Pulse v1.2.0 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
+    log::info("VETER v1.2.0 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
 }
