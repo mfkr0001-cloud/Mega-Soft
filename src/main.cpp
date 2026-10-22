@@ -1,4 +1,4 @@
-#include <Geode/Geode.hpp>
+include <Geode/Geode.hpp>
 #include <Geode/modify/CCDirector.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
@@ -2420,19 +2420,16 @@ public:
 };
 
 namespace {
-    void attachVETERButton(CCScene* scene) {
+    void attachVETERButton(CCNode* scene) {
         if (!scene || scene->getChildByTag(kVETERButtonTag)) return;
 
         auto* menu = CCMenu::create();
         auto* delegate = VETEROpenDelegate::create();
-        auto iconPath = (Mod::get()->getResourcesDir() / "icon.png").string();
-        auto* iconSprite = CCSprite::create(iconPath.c_str());
-        CCNode* buttonVisual = iconSprite;
-        if (iconSprite) {
-            iconSprite->setScale(0.10f);
-        } else {
-            buttonVisual = ButtonSprite::create("VETER", "bigFont.fnt", "GJ_button_01.png", 0.55f);
-        }
+        // Use a clear text button rather than a tiny icon: on some Android
+        // resolutions the icon was nearly invisible / looked like an arrow.
+        CCNode* buttonVisual = ButtonSprite::create(
+            "VETER", "bigFont.fnt", "GJ_button_01.png", 0.65f
+        );
         if (!menu || !delegate || !buttonVisual) return;
 
         auto* item = CCMenuItemSpriteExtra::create(
@@ -2443,13 +2440,24 @@ namespace {
         const auto size = CCDirector::sharedDirector()->getWinSize();
         menu->setTag(kVETERButtonTag);
         menu->setPosition({0.f, 0.f});
-        item->setPosition({size.width - 52.f, size.height - 52.f});
-        item->setScale(0.68f);
+        item->setPosition({size.width - 76.f, size.height - 76.f});
+        item->setScale(0.90f);
         menu->addChild(delegate);
         menu->addChild(item);
         scene->addChild(menu, 9999);
     }
 }
+
+// Attach directly to the main-menu layer as soon as it is initialized. This
+// avoids relying exclusively on CCDirector::drawScene, which may be too late
+// or inconsistent on some Android builds.
+class $modify(VETERMenuLayer, MenuLayer) {
+    bool init() {
+        if (!MenuLayer::init()) return false;
+        attachVETERButton(this);
+        return true;
+    }
+};
 
 // Local-only unlock-status overrides. These do not add currency or alter server data.
 class $modify(VETERGameStats, GameStatsManager) {
@@ -2731,5 +2739,5 @@ $on_mod(Loaded) {
     applyFPSBypass();
     if (musicMuted()) applyMusicMute();
     applyMusicPitch();
-    log::info("VETER v1.2.2 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
+    log::info("VETER v1.2.3 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
 }
