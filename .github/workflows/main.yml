@@ -41,3 +41,7 @@ jobs:
           path: ${{ steps.build.outputs.build-output }}/*.geode
           if-no-files-found: error
           retention-days: 14
+
+          path: ${{ steps.build.outputs.build-output }}/*.geode
+          if-no-files-found: error
+          retention-days: 14
