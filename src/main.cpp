@@ -1166,47 +1166,58 @@ private:
     enum class MenuTab { Player = 0, Bot = 1, Visuals = 2, Settings = 3 };
     CCNode* m_pages[4] = {nullptr, nullptr, nullptr, nullptr};
     CCMenu* m_pageMenus[4] = {nullptr, nullptr, nullptr, nullptr};
-    ButtonSprite* m_tabSprites[4] = {nullptr, nullptr, nullptr, nullptr};
+    CCLabelBMFont* m_tabSprites[4] = {nullptr, nullptr, nullptr, nullptr};
+    CCLayerColor* m_tabCards[4] = {nullptr, nullptr, nullptr, nullptr};
+    CCLabelBMFont* m_sectionLabel = nullptr;
     int m_activeTab = 0;
 
-    ButtonSprite* m_noClipSprite = nullptr;
-    ButtonSprite* m_speedhackSprite = nullptr;
-    ButtonSprite* m_musicSprite = nullptr;
-    ButtonSprite* m_musicSyncSprite = nullptr;
-    ButtonSprite* m_speedValueSprite = nullptr;
-    ButtonSprite* m_botLoopSprite = nullptr;
-    ButtonSprite* m_botSlotSprite = nullptr;
-    ButtonSprite* m_botRateSprite = nullptr;
+    CCLabelBMFont* m_noClipSprite = nullptr;
+    CCLabelBMFont* m_speedhackSprite = nullptr;
+    CCLabelBMFont* m_musicSprite = nullptr;
+    CCLabelBMFont* m_musicSyncSprite = nullptr;
+    CCLabelBMFont* m_speedValueSprite = nullptr;
+    CCLabelBMFont* m_botLoopSprite = nullptr;
+    CCLabelBMFont* m_botSlotSprite = nullptr;
+    CCLabelBMFont* m_botRateSprite = nullptr;
 
-    ButtonSprite* m_fpsEnabledSprite = nullptr;
-    ButtonSprite* m_fpsValueSprite = nullptr;
-    ButtonSprite* m_retrySprite = nullptr;
-    ButtonSprite* m_hitboxSprite = nullptr;
-    ButtonSprite* m_cpsSprite = nullptr;
-    ButtonSprite* m_practiceMusicSprite = nullptr;
-    ButtonSprite* m_noclipLimitSprite = nullptr;
-    ButtonSprite* m_noclipLimitValueSprite = nullptr;
-    ButtonSprite* m_frameStepSprite = nullptr;
-    ButtonSprite* m_noDeathEffectSprite = nullptr;
-    ButtonSprite* m_hitboxesOnDeathSprite = nullptr;
-    ButtonSprite* m_confirmExitSprite = nullptr;
-    ButtonSprite* m_layoutModeSprite = nullptr;
+    CCLabelBMFont* m_fpsEnabledSprite = nullptr;
+    CCLabelBMFont* m_fpsValueSprite = nullptr;
+    CCLabelBMFont* m_retrySprite = nullptr;
+    CCLabelBMFont* m_hitboxSprite = nullptr;
+    CCLabelBMFont* m_cpsSprite = nullptr;
+    CCLabelBMFont* m_practiceMusicSprite = nullptr;
+    CCLabelBMFont* m_noclipLimitSprite = nullptr;
+    CCLabelBMFont* m_noclipLimitValueSprite = nullptr;
+    CCLabelBMFont* m_frameStepSprite = nullptr;
+    CCLabelBMFont* m_noDeathEffectSprite = nullptr;
+    CCLabelBMFont* m_hitboxesOnDeathSprite = nullptr;
+    CCLabelBMFont* m_confirmExitSprite = nullptr;
+    CCLabelBMFont* m_layoutModeSprite = nullptr;
 
-    ButtonSprite* m_trajectorySprite = nullptr;
-    ButtonSprite* m_predictionSprite = nullptr;
-    ButtonSprite* m_clicksSprite = nullptr;
-    ButtonSprite* m_fpsCounterSprite = nullptr;
-    ButtonSprite* m_customMusicSprite = nullptr;
-    ButtonSprite* m_transparentPauseSprite = nullptr;
-    ButtonSprite* m_hidePauseSprite = nullptr;
+    CCLabelBMFont* m_trajectorySprite = nullptr;
+    CCLabelBMFont* m_predictionSprite = nullptr;
+    CCLabelBMFont* m_clicksSprite = nullptr;
+    CCLabelBMFont* m_fpsCounterSprite = nullptr;
+    CCLabelBMFont* m_customMusicSprite = nullptr;
+    CCLabelBMFont* m_transparentPauseSprite = nullptr;
+    CCLabelBMFont* m_hidePauseSprite = nullptr;
 
     void refreshTabs() {
         static const char* labels[] = {"PLAYER", "GD BOT", "VISUALS", "SETTINGS"};
+        static const char* sections[] = {"PLAYER CONTROL", "GD BOT RECORDER", "VISUAL TOOLS", "GAME SETTINGS"};
         for (int i = 0; i < 4; ++i) {
-            if (!m_tabSprites[i]) continue;
-            const std::string label = labels[i];
-            m_tabSprites[i]->setString(label.c_str());
-            m_tabSprites[i]->setColor(i == m_activeTab ? ccc3(60, 245, 255) : ccc3(235, 240, 255));
+            const bool active = i == m_activeTab;
+            if (m_tabSprites[i]) {
+                m_tabSprites[i]->setString(labels[i]);
+                m_tabSprites[i]->setColor(active ? ccc3(90, 242, 248) : ccc3(204, 216, 232));
+            }
+            if (m_tabCards[i]) {
+                m_tabCards[i]->setColor(active ? ccc3(22, 73, 87) : ccc3(19, 26, 40));
+                m_tabCards[i]->setOpacity(active ? 255 : 215);
+            }
+        }
+        if (m_sectionLabel) {
+            m_sectionLabel->setString(sections[m_activeTab]);
         }
     }
 
@@ -1273,18 +1284,49 @@ private:
 
 protected:
     bool init() {
-        // A short window leaves enough vertical room for a wide-screen Android layout.
-        if (!Popup::init(350.f, 305.f)) return false;
+        // Wider, compact layout inspired by modern category-based mod menus.
+        if (!Popup::init(420.f, 320.f)) return false;
         setTitle("VETER");
 
         if (!m_mainLayer) return false;
         const auto size = m_mainLayer->getContentSize();
-        auto* darkPanel = CCLayerColor::create(ccc4(16, 20, 34, 250), size.width, size.height);
+
+        // Base and content panels.
+        auto* darkPanel = CCLayerColor::create(ccc4(9, 13, 24, 250), size.width, size.height);
         if (darkPanel) m_mainLayer->addChild(darkPanel, -5);
-        auto* accent = CCLayerColor::create(ccc4(0, 220, 255, 255), size.width - 18.f, 3.f);
+        auto* contentPanel = CCLayerColor::create(ccc4(13, 18, 31, 246), size.width - 104.f, size.height - 44.f);
+        if (contentPanel) {
+            contentPanel->setPosition({96.f, 8.f});
+            m_mainLayer->addChild(contentPanel, -4);
+        }
+        auto* sidePanel = CCLayerColor::create(ccc4(10, 15, 27, 250), 78.f, size.height - 44.f);
+        if (sidePanel) {
+            sidePanel->setPosition({8.f, 8.f});
+            m_mainLayer->addChild(sidePanel, -4);
+        }
+        auto* divider = CCLayerColor::create(ccc4(34, 183, 207, 255), 2.f, size.height - 48.f);
+        if (divider) {
+            divider->setPosition({89.f, 10.f});
+            m_mainLayer->addChild(divider, -3);
+        }
+        auto* accent = CCLayerColor::create(ccc4(38, 211, 228, 255), size.width - 108.f, 2.f);
         if (accent) {
-            accent->setPosition({9.f, size.height - 28.f});
-            m_mainLayer->addChild(accent, -4);
+            accent->setPosition({99.f, size.height - 38.f});
+            m_mainLayer->addChild(accent, -3);
+        }
+        auto* lowerAccent = CCLayerColor::create(ccc4(24, 45, 62, 255), size.width - 108.f, 1.f);
+        if (lowerAccent) {
+            lowerAccent->setPosition({99.f, 13.f});
+            m_mainLayer->addChild(lowerAccent, -3);
+        }
+
+        m_sectionLabel = CCLabelBMFont::create("PLAYER CONTROL", "bigFont.fnt");
+        if (m_sectionLabel) {
+            m_sectionLabel->setScale(0.30f);
+            m_sectionLabel->setColor(ccc3(91, 227, 240));
+            m_sectionLabel->setAnchorPoint({0.5f, 0.5f});
+            m_sectionLabel->setPosition({257.f, size.height - 57.f});
+            m_mainLayer->addChild(m_sectionLabel, 4);
         }
 
         auto makeMenu = [&](int tabIndex) -> CCMenu* {
@@ -1298,40 +1340,88 @@ protected:
             m_pages[tabIndex]->addChild(menu);
             return menu;
         };
+
+        // Custom flat cards replace the stock bright green/red GD buttons.
+        // The command callbacks and the underlying feature logic remain unchanged.
         auto addButton = [&](CCMenu* menu, const std::string& text, SEL_MenuHandler selector,
-                             float x, float y, const char* frame, float fontScale = 0.27f) -> ButtonSprite* {
+                             float x, float y, const char* frame, float fontScale = 0.27f) -> CCLabelBMFont* {
             if (!menu) return nullptr;
-            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, fontScale);
-            if (!sprite) return nullptr;
-            auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
+            (void)frame; // Retained in the call signature so existing feature definitions stay readable.
+            constexpr float cardWidth = 104.f;
+            constexpr float cardHeight = 26.f;
+            auto* card = CCLayerColor::create(ccc4(20, 27, 41, 252), cardWidth, cardHeight);
+            if (!card) return nullptr;
+            card->setAnchorPoint({0.5f, 0.5f});
+
+            auto* stripe = CCLayerColor::create(ccc4(38, 211, 228, 255), 2.f, cardHeight);
+            if (stripe) {
+                stripe->setPosition({0.f, 0.f});
+                card->addChild(stripe, 1);
+            }
+            auto* bottomLine = CCLayerColor::create(ccc4(35, 52, 72, 255), cardWidth - 2.f, 1.f);
+            if (bottomLine) {
+                bottomLine->setPosition({2.f, 0.f});
+                card->addChild(bottomLine, 1);
+            }
+            auto* label = CCLabelBMFont::create(text.c_str(), "bigFont.fnt");
+            if (!label) return nullptr;
+            const float naturalWidth = label->getContentSize().width;
+            const float fittedScale = naturalWidth > 0.f ? std::min(fontScale, 94.f / naturalWidth) : fontScale;
+            label->setScale(fittedScale);
+            label->setColor(ccc3(222, 235, 247));
+            label->setAnchorPoint({0.5f, 0.5f});
+            label->setPosition({cardWidth * 0.52f, cardHeight * 0.52f});
+            card->addChild(label, 2);
+
+            auto* item = CCMenuItemSpriteExtra::create(card, this, selector);
             if (!item) return nullptr;
             item->setPosition({x, y});
             menu->addChild(item);
-            return sprite;
+            return label;
         };
+
         auto* nav = CCMenu::create();
         if (!nav) return false;
         nav->setPosition({0.f, 0.f});
         m_mainLayer->addChild(nav, 5);
-        auto tabButton = [&](int idx, const char* label, SEL_MenuHandler selector, float x) {
-            auto* sprite = ButtonSprite::create(label, "bigFont.fnt",
-                idx == 0 ? "GJ_button_02.png" : "GJ_button_01.png", 0.25f);
-            if (!sprite) return;
-            auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
+        auto tabButton = [&](int idx, const char* label, SEL_MenuHandler selector, float y) {
+            constexpr float tabWidth = 74.f;
+            constexpr float tabHeight = 30.f;
+            auto* card = CCLayerColor::create(ccc4(19, 26, 40, 225), tabWidth, tabHeight);
+            if (!card) return;
+            card->setAnchorPoint({0.5f, 0.5f});
+            auto* stripe = CCLayerColor::create(ccc4(38, 211, 228, 255), 2.f, tabHeight);
+            if (stripe) {
+                stripe->setPosition({0.f, 0.f});
+                card->addChild(stripe, 1);
+            }
+            auto* textLabel = CCLabelBMFont::create(label, "bigFont.fnt");
+            if (!textLabel) return;
+            float scale = 0.20f;
+            if (textLabel->getContentSize().width > 0.f)
+                scale = std::min(scale, 66.f / textLabel->getContentSize().width);
+            textLabel->setScale(scale);
+            textLabel->setColor(ccc3(204, 216, 232));
+            textLabel->setAnchorPoint({0.5f, 0.5f});
+            textLabel->setPosition({tabWidth * 0.53f, tabHeight * 0.5f});
+            card->addChild(textLabel, 2);
+            auto* item = CCMenuItemSpriteExtra::create(card, this, selector);
             if (!item) return;
-            item->setPosition({x, size.height - 49.f});
-            m_tabSprites[idx] = sprite;
+            item->setPosition({46.f, y});
             nav->addChild(item);
+            m_tabCards[idx] = card;
+            m_tabSprites[idx] = textLabel;
         };
-        tabButton(0, "PLAYER", menu_selector(VETERPopup::onTabPlayer), size.width * 0.14f);
-        tabButton(1, "GD BOT", menu_selector(VETERPopup::onTabBot), size.width * 0.38f);
-        tabButton(2, "VISUALS", menu_selector(VETERPopup::onTabVisuals), size.width * 0.63f);
-        tabButton(3, "SETTINGS", menu_selector(VETERPopup::onTabSettings), size.width * 0.87f);
+        tabButton(0, "PLAYER", menu_selector(VETERPopup::onTabPlayer), size.height - 68.f);
+        tabButton(1, "GD BOT", menu_selector(VETERPopup::onTabBot), size.height - 112.f);
+        tabButton(2, "VISUALS", menu_selector(VETERPopup::onTabVisuals), size.height - 156.f);
+        tabButton(3, "SETTINGS", menu_selector(VETERPopup::onTabSettings), size.height - 200.f);
 
-        const float left = size.width * 0.19f;
-        const float center = size.width * 0.50f;
-        const float right = size.width * 0.81f;
-        const float top = size.height - 92.f;
+        // Main controls are aligned to the right of the category rail.
+        const float left = 148.f;
+        const float center = 257.f;
+        const float right = 366.f;
+        const float top = size.height - 91.f;
 
         // PLAYER tab: gameplay switches and speed controls.
         auto* player = makeMenu(0);
@@ -1341,17 +1431,17 @@ protected:
             menu_selector(VETERPopup::onToggleSpeedhack), center, top, speedhackEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_musicSprite = addButton(player, musicMuted() ? "MUSIC OFF" : "MUSIC ON",
             menu_selector(VETERPopup::onToggleMusic), right, top, musicMuted() ? "GJ_button_04.png" : "GJ_button_02.png");
-        addButton(player, "-0.1x", menu_selector(VETERPopup::onSpeedDown), left, top - 50.f, "GJ_button_01.png");
-        m_speedValueSprite = addButton(player, speedLabel(), menu_selector(VETERPopup::onSpeedLabel), center, top - 50.f, "GJ_button_02.png");
-        addButton(player, "+0.1x", menu_selector(VETERPopup::onSpeedUp), right, top - 50.f, "GJ_button_01.png");
+        addButton(player, "-0.1x", menu_selector(VETERPopup::onSpeedDown), left, top - 43.f, "GJ_button_01.png");
+        m_speedValueSprite = addButton(player, speedLabel(), menu_selector(VETERPopup::onSpeedLabel), center, top - 43.f, "GJ_button_02.png");
+        addButton(player, "+0.1x", menu_selector(VETERPopup::onSpeedUp), right, top - 43.f, "GJ_button_01.png");
         m_musicSyncSprite = addButton(player, musicSpeedSyncEnabled() ? "MUSIC SYNC ON" : "MUSIC SYNC OFF",
-            menu_selector(VETERPopup::onToggleMusicSync), center, top - 101.f,
+            menu_selector(VETERPopup::onToggleMusicSync), center, top - 86.f,
             musicSpeedSyncEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", 0.25f);
 
-        // GD BOT tab: all macro controls stay together and fit in four rows.
+        // GD BOT tab: recording, replay, saving and macro-rate controls.
         auto* bot = makeMenu(1);
-        const float botGap = 43.f;
-        auto botRow = [&](int i) { return top - 3.f - botGap * static_cast<float>(i); };
+        const float botGap = 39.f;
+        auto botRow = [&](int i) { return top - 2.f - botGap * static_cast<float>(i); };
         addButton(bot, "REC", menu_selector(VETERPopup::onRecord), left, botRow(0), "GJ_button_01.png");
         addButton(bot, "STOP", menu_selector(VETERPopup::onStopBot), center, botRow(0), "GJ_button_04.png");
         addButton(bot, "PLAY", menu_selector(VETERPopup::onPlay), right, botRow(0), "GJ_button_01.png");
@@ -1367,10 +1457,10 @@ protected:
         m_botRateSprite = addButton(bot, botPlaybackRateLabel(), menu_selector(VETERPopup::onBotRateInfo), center, botRow(3), "GJ_button_02.png");
         addButton(bot, "RATE +", menu_selector(VETERPopup::onBotRateUp), right, botRow(3), "GJ_button_01.png");
 
-        // VISUALS tab: these are direct controls, not another oversized popup.
+        // VISUALS tab.
         auto* visuals = makeMenu(2);
-        const float visualGap = 47.f;
-        auto visualRow = [&](int i) { return top - visualGap * static_cast<float>(i); };
+        const float visualGap = 43.f;
+        auto visualRow = [&](int i) { return top - 1.f - visualGap * static_cast<float>(i); };
         m_trajectorySprite = addButton(visuals, trajectoryEnabled() ? "TRAIL ON" : "TRAIL OFF",
             menu_selector(VETERPopup::onToggleTrajectory), left, visualRow(0), trajectoryEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
         m_predictionSprite = addButton(visuals, trajectoryPredictorEnabled() ? "PREDICT ON" : "PREDICT OFF",
@@ -1387,10 +1477,10 @@ protected:
             menu_selector(VETERPopup::onToggleHidePause), left, visualRow(2), hidePauseButtonEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", 0.24f);
         addButton(visuals, "MUSIC FILE INFO", menu_selector(VETERPopup::onMusicInfo), center, visualRow(2), "GJ_button_01.png", 0.24f);
 
-        // SETTINGS tab: compact controls for the remaining toggles and utilities.
+        // SETTINGS tab: compact rows; all original actions are retained.
         auto* settings = makeMenu(3);
         const float setTop = size.height - 91.f;
-        const float setGap = 25.3f;
+        const float setGap = 28.5f;
         auto setRow = [&](int i) { return setTop - setGap * static_cast<float>(i); };
         const float small = 0.215f;
         m_fpsEnabledSprite = addButton(settings, fpsBypassEnabled() ? "FPS ON" : "FPS OFF", menu_selector(VETERPopup::onSetFPS), left, setRow(0), fpsBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
