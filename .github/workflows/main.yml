@@ -1,10 +1,10 @@
-```yaml
 name: Build MegaSoft Pulse Android
 
 on:
   workflow_dispatch:
   push:
-    branches: ["**"]
+    branches:
+      - "**"
   pull_request:
 
 permissions:
@@ -14,7 +14,6 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
       matrix:
@@ -36,11 +35,10 @@ jobs:
           target: ${{ matrix.target }}
           build-config: Release
 
-      - name: Upload compiled .geode package
+      - name: Upload compiled Geode package
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ steps.build.outputs.build-output }}/*.geode
+          path: "${{ steps.build.outputs.build-output }}/*.geode"
           if-no-files-found: error
           retention-days: 14
-```
