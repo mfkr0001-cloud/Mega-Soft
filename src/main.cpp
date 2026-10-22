@@ -3,6 +3,9 @@
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/PlayerObject.hpp>
+#include <Geode/modify/PauseLayer.hpp>
+#include <Geode/modify/GameStatsManager.hpp>
+#include <Geode/modify/CCTextInputNode.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -12,6 +15,7 @@
 #include <iterator>
 #include <string>
 #include <system_error>
+#include <sstream>
 #include <utility>
 #include <vector>
 
@@ -20,6 +24,446 @@ using namespace geode::prelude;
 namespace {
     constexpr int kMegaSoftPulseButtonTag = 0x4D534831;
     constexpr std::size_t kMaxMacroEvents = 500000;
+
+    bool autoRetryEnabled() {
+        return Mod::get()->getSavedValue<bool>("auto-retry-enabled", false);
+    }
+    void setAutoRetryEnabled(bool enabled) {
+        Mod::get()->setSavedValue("auto-retry-enabled", enabled);
+    }
+    bool fpsBypassEnabled() {
+        return Mod::get()->getSavedValue<bool>("fps-bypass-enabled", false);
+    }
+    void setFPSBypassEnabled(bool enabled) {
+        Mod::get()->setSavedValue("fps-bypass-enabled", enabled);
+    }
+    int targetFPS() {
+        int value = Mod::get()->getSavedValue<int>("fps-target", 120);
+        return std::clamp(value, 60, 360);
+    }
+    void setTargetFPS(int value) {
+        value = std::clamp(value, 60, 360);
+        value = ((value + 15) / 30) * 30;
+        Mod::get()->setSavedValue("fps-target", std::clamp(value, 60, 360));
+    }
+    bool hitboxesEnabled() {
+        return Mod::get()->getSavedValue<bool>("hitboxes-enabled", false);
+    }
+    void setHitboxesEnabled(bool enabled) {
+        Mod::get()->setSavedValue("hitboxes-enabled", enabled);
+    }
+    bool cpsEnabled() {
+        return Mod::get()->getSavedValue<bool>("cps-enabled", false);
+    }
+    void setCPSEnabled(bool enabled) {
+        Mod::get()->setSavedValue("cps-enabled", enabled);
+    }
+    bool practiceMusicEnabled() {
+        return Mod::get()->getSavedValue<bool>("practice-music-enabled", false);
+    }
+    void setPracticeMusicEnabled(bool enabled) {
+        Mod::get()->setSavedValue("practice-music-enabled", enabled);
+    }
+
+    bool frameStepEnabled() {
+        return Mod::get()->getSavedValue<bool>("frame-step-enabled", false);
+    }
+    void setFrameStepEnabled(bool enabled) {
+        Mod::get()->setSavedValue("frame-step-enabled", enabled);
+    }
+    bool noDeathEffectEnabled() {
+        return Mod::get()->getSavedValue<bool>("no-death-effect-enabled", false);
+    }
+    void setNoDeathEffectEnabled(bool enabled) {
+        Mod::get()->setSavedValue("no-death-effect-enabled", enabled);
+    }
+    bool hitboxesOnDeathEnabled() {
+        return Mod::get()->getSavedValue<bool>("hitboxes-on-death-enabled", false);
+    }
+    void setHitboxesOnDeathEnabled(bool enabled) {
+        Mod::get()->setSavedValue("hitboxes-on-death-enabled", enabled);
+    }
+    bool confirmExitEnabled() {
+        return Mod::get()->getSavedValue<bool>("confirm-exit-enabled", false);
+    }
+    void setConfirmExitEnabled(bool enabled) {
+        Mod::get()->setSavedValue("confirm-exit-enabled", enabled);
+    }
+    bool noclipLimitEnabled() {
+        return Mod::get()->getSavedValue<bool>("noclip-limit-enabled", false);
+    }
+    void setNoclipLimitEnabled(bool enabled) {
+        Mod::get()->setSavedValue("noclip-limit-enabled", enabled);
+    }
+    int noclipMaxDeaths() {
+        return std::clamp(Mod::get()->getSavedValue<int>("noclip-max-deaths", 5), 1, 50);
+    }
+    void setNoclipMaxDeaths(int value) {
+        Mod::get()->setSavedValue("noclip-max-deaths", std::clamp(value, 1, 50));
+    }
+    bool unlockAllEnabled() {
+        return Mod::get()->getSavedValue<bool>("unlock-all-enabled", false);
+    }
+    void setUnlockAllEnabled(bool enabled) {
+        Mod::get()->setSavedValue("unlock-all-enabled", enabled);
+    }
+    bool shopUnlockBypassEnabled() {
+        return Mod::get()->getSavedValue<bool>("shop-unlock-bypass-enabled", false);
+    }
+    void setShopUnlockBypassEnabled(bool enabled) {
+        Mod::get()->setSavedValue("shop-unlock-bypass-enabled", enabled);
+    }
+    bool vaultBypassEnabled() {
+        return Mod::get()->getSavedValue<bool>("vault-bypass-enabled", false);
+    }
+    void setVaultBypassEnabled(bool enabled) {
+        Mod::get()->setSavedValue("vault-bypass-enabled", enabled);
+    }
+    bool iconKitBypassEnabled() {
+        return Mod::get()->getSavedValue<bool>("icon-kit-bypass-enabled", false);
+    }
+    void setIconKitBypassEnabled(bool enabled) {
+        Mod::get()->setSavedValue("icon-kit-bypass-enabled", enabled);
+    }
+    bool mainLevelsBypassEnabled() {
+        return Mod::get()->getSavedValue<bool>("main-levels-bypass-enabled", false);
+    }
+    void setMainLevelsBypassEnabled(bool enabled) {
+        Mod::get()->setSavedValue("main-levels-bypass-enabled", enabled);
+    }
+    bool textLengthBypassEnabled() {
+        return Mod::get()->getSavedValue<bool>("text-length-bypass-enabled", false);
+    }
+    void setTextLengthBypassEnabled(bool enabled) {
+        Mod::get()->setSavedValue("text-length-bypass-enabled", enabled);
+    }
+    bool trajectoryEnabled() {
+        return Mod::get()->getSavedValue<bool>("trajectory-enabled", false);
+    }
+    void setTrajectoryEnabled(bool enabled) {
+        Mod::get()->setSavedValue("trajectory-enabled", enabled);
+    }
+    bool showClicksEnabled() {
+        return Mod::get()->getSavedValue<bool>("show-clicks-enabled", false);
+    }
+    void setShowClicksEnabled(bool enabled) {
+        Mod::get()->setSavedValue("show-clicks-enabled", enabled);
+    }
+    bool customMenuMusicEnabled() {
+        return Mod::get()->getSavedValue<bool>("custom-menu-music-enabled", false);
+    }
+    void setCustomMenuMusicEnabled(bool enabled) {
+        Mod::get()->setSavedValue("custom-menu-music-enabled", enabled);
+    }
+    bool transparentPauseEnabled() {
+        return Mod::get()->getSavedValue<bool>("transparent-pause-enabled", false);
+    }
+    void setTransparentPauseEnabled(bool enabled) {
+        Mod::get()->setSavedValue("transparent-pause-enabled", enabled);
+    }
+    bool hidePauseButtonEnabled() {
+        return Mod::get()->getSavedValue<bool>("hide-pause-button-enabled", false);
+    }
+    void setHidePauseButtonEnabled(bool enabled) {
+        Mod::get()->setSavedValue("hide-pause-button-enabled", enabled);
+    }
+    bool layoutModeEnabled() {
+        return Mod::get()->getSavedValue<bool>("layout-mode-enabled", false);
+    }
+    void setLayoutModeEnabled(bool enabled) {
+        Mod::get()->setSavedValue("layout-mode-enabled", enabled);
+    }
+
+    double g_originalAnimationInterval = 1.0 / 60.0;
+    PlayLayer* g_debugDrawLayer = nullptr;
+    PlayLayer* g_practiceMusicLayer = nullptr;
+    bool g_autoRetryPending = false;
+    int g_cpsInputCount = 0;
+    int g_currentCPS = 0;
+    double g_cpsWindowElapsed = 0.0;
+    PlayLayer* g_cpsLayer = nullptr;
+    CCLabelBMFont* g_cpsLabel = nullptr;
+    PlayLayer* g_noclipStatusLayer = nullptr;
+    CCLabelBMFont* g_noclipStatusLabel = nullptr;
+    int g_noclipDeathCount = 0;
+    int g_noclipMaxProgress = 0;
+    bool g_noclipDeathDrawActive = false;
+    bool g_frameStepPending = false;
+    bool g_confirmExitProceed = false;
+    int g_checkpointIndex = -1;
+
+    constexpr int kTrajectoryDrawTag = 0x4D535833;
+    constexpr int kClickLabelTag = 0x4D535834;
+    PlayLayer* g_trajectoryLayer = nullptr;
+    CCDrawNode* g_trajectoryDrawNode = nullptr;
+    std::vector<CCPoint> g_trajectoryPoints;
+    PlayLayer* g_pauseButtonLayer = nullptr;
+    CCNode* g_pauseButtonNode = nullptr;
+    PlayLayer* g_clickLayer = nullptr;
+    CCLabelBMFont* g_clickLabel = nullptr;
+    float g_clickFlashRemaining = 0.f;
+    std::string g_customMenuMusicPath;
+    bool g_customMenuMusicApplied = false;
+
+    void applyFPSBypass() {
+        auto* director = CCDirector::sharedDirector();
+        if (!director) return;
+        if (fpsBypassEnabled()) {
+            director->setAnimationInterval(1.0 / static_cast<double>(targetFPS()));
+        } else {
+            director->setAnimationInterval(g_originalAnimationInterval > 0.0
+                ? g_originalAnimationInterval : 1.0 / 60.0);
+        }
+    }
+
+    void updateCPSOverlay(PlayLayer* layer, float dt) {
+        if (!layer) return;
+        if (g_cpsLayer != layer) {
+            // The previous level owns the previous label; never touch that pointer
+            // after Geometry Dash replaces the PlayLayer.
+            g_cpsLayer = layer;
+            g_cpsLabel = nullptr;
+            g_cpsWindowElapsed = 0.0;
+            g_cpsInputCount = 0;
+            g_currentCPS = 0;
+        }
+        if (!cpsEnabled()) {
+            if (g_cpsLabel) g_cpsLabel->setVisible(false);
+            return;
+        }
+        if (g_cpsLayer != layer || !g_cpsLabel) {
+            g_cpsLayer = layer;
+            g_cpsLabel = CCLabelBMFont::create("CPS 0", "chatFont.fnt");
+            if (g_cpsLabel) {
+                const auto size = CCDirector::sharedDirector()->getWinSize();
+                g_cpsLabel->setAnchorPoint({0.f, 1.f});
+                g_cpsLabel->setPosition({12.f, size.height - 12.f});
+                g_cpsLabel->setScale(0.55f);
+                layer->addChild(g_cpsLabel, 9998);
+            }
+        }
+        if (g_cpsLabel) {
+            g_cpsLabel->setVisible(true);
+            char label[32];
+            std::snprintf(label, sizeof(label), "CPS %d", g_currentCPS);
+            g_cpsLabel->setString(label);
+        }
+        g_cpsWindowElapsed += std::max(0.0, static_cast<double>(dt));
+        if (g_cpsWindowElapsed >= 1.0) {
+            g_currentCPS = g_cpsInputCount;
+            g_cpsInputCount = 0;
+            g_cpsWindowElapsed = 0.0;
+        }
+    }
+
+    bool noclipEnabled();
+    bool noclipLimitEnabled();
+    int noclipMaxDeaths();
+
+    void updateNoclipStatusOverlay(PlayLayer* layer) {
+        if (!layer) return;
+        if (g_noclipStatusLayer != layer) {
+            g_noclipStatusLayer = layer;
+            g_noclipStatusLabel = nullptr;
+            g_noclipDeathCount = 0;
+            g_noclipMaxProgress = 0;
+        }
+        const bool visible = noclipEnabled() || noclipLimitEnabled();
+        if (!visible) {
+            if (g_noclipStatusLabel) g_noclipStatusLabel->setVisible(false);
+            return;
+        }
+        if (!g_noclipStatusLabel) {
+            g_noclipStatusLabel = CCLabelBMFont::create("NC 0% | HITS 0", "chatFont.fnt");
+            if (g_noclipStatusLabel) {
+                const auto size = CCDirector::sharedDirector()->getWinSize();
+                g_noclipStatusLabel->setAnchorPoint({0.f, 1.f});
+                g_noclipStatusLabel->setPosition({12.f, size.height - 34.f});
+                g_noclipStatusLabel->setScale(0.48f);
+                layer->addChild(g_noclipStatusLabel, 9998);
+            }
+        }
+        const int progress = std::clamp(layer->getCurrentPercentInt(), 0, 100);
+        g_noclipMaxProgress = std::max(g_noclipMaxProgress, progress);
+        if (g_noclipStatusLabel) {
+            char label[80];
+            if (noclipLimitEnabled()) {
+                std::snprintf(label, sizeof(label), "NC %d%% | HITS %d/%d", g_noclipMaxProgress,
+                              g_noclipDeathCount, noclipMaxDeaths());
+            } else {
+                std::snprintf(label, sizeof(label), "NC %d%% | HITS %d", g_noclipMaxProgress,
+                              g_noclipDeathCount);
+            }
+            g_noclipStatusLabel->setString(label);
+            g_noclipStatusLabel->setVisible(true);
+        }
+    }
+
+    // Screen-space reference grid for Layout Mode. It is attached to the active
+    // scene (rather than PlayLayer) so camera scrolling does not move the grid.
+    constexpr int kLayoutGridTag = 0x4D534832;
+    void updateLayoutGrid(CCScene* scene) {
+        if (!scene) return;
+        auto* existing = scene->getChildByTag(kLayoutGridTag);
+        if (!layoutModeEnabled() || !PlayLayer::get()) {
+            if (existing) existing->removeFromParentAndCleanup(true);
+            return;
+        }
+        if (existing) return;
+        auto* grid = CCDrawNode::create();
+        if (!grid) return;
+        grid->setTag(kLayoutGridTag);
+        const auto win = CCDirector::sharedDirector()->getWinSize();
+        const ccColor4F gridColor = {0.12f, 0.82f, 1.0f, 0.24f};
+        constexpr float spacing = 32.f;
+        for (float x = 0.f; x <= win.width; x += spacing) {
+            grid->drawSegment({x, 0.f}, {x, win.height}, 0.55f, gridColor);
+        }
+        for (float y = 0.f; y <= win.height; y += spacing) {
+            grid->drawSegment({0.f, y}, {win.width, y}, 0.55f, gridColor);
+        }
+        scene->addChild(grid, 10000);
+    }
+
+    CCNode* findPauseButtonNode(CCNode* root) {
+        if (!root) return nullptr;
+        auto* cache = CCSpriteFrameCache::sharedSpriteFrameCache();
+        auto* pauseFrame = cache ? cache->spriteFrameByName("GJ_pauseBtn_001.png") : nullptr;
+        if (pauseFrame) {
+            if (auto* sprite = typeinfo_cast<CCSprite*>(root)) {
+                if (sprite->displayFrame() == pauseFrame) {
+                    CCNode* candidate = sprite;
+                    while (candidate && candidate->getParent() && !typeinfo_cast<CCMenuItem*>(candidate)) {
+                        candidate = candidate->getParent();
+                    }
+                    if (candidate && typeinfo_cast<CCMenuItem*>(candidate)) return candidate;
+                }
+            }
+        }
+        if (auto* children = root->getChildren()) {
+            for (unsigned int i = 0; i < children->count(); ++i) {
+                if (auto* found = findPauseButtonNode(static_cast<CCNode*>(children->objectAtIndex(i)))) return found;
+            }
+        }
+        return nullptr;
+    }
+
+    void updatePauseButtonVisibility(PlayLayer* layer) {
+        if (!layer) return;
+        if (g_pauseButtonLayer != layer) {
+            g_pauseButtonLayer = layer;
+            g_pauseButtonNode = nullptr;
+        }
+        // Only search the scene until the pause item is found. The old version
+        // recursively traversed every child node on every frame.
+        if (!g_pauseButtonNode) g_pauseButtonNode = findPauseButtonNode(layer);
+        if (g_pauseButtonNode) g_pauseButtonNode->setVisible(!hidePauseButtonEnabled());
+    }
+
+    void updateTrajectoryTrail(PlayLayer* layer) {
+        if (!layer) return;
+        if (!trajectoryEnabled()) {
+            if (g_trajectoryDrawNode) g_trajectoryDrawNode->removeFromParentAndCleanup(true);
+            g_trajectoryDrawNode = nullptr;
+            g_trajectoryLayer = nullptr;
+            g_trajectoryPoints.clear();
+            return;
+        }
+        if (g_trajectoryLayer != layer) {
+            g_trajectoryLayer = layer;
+            g_trajectoryPoints.clear();
+            g_trajectoryDrawNode = CCDrawNode::create();
+            if (g_trajectoryDrawNode) {
+                g_trajectoryDrawNode->setTag(kTrajectoryDrawTag);
+                layer->addChild(g_trajectoryDrawNode, 9996);
+            }
+        }
+        if (!g_trajectoryDrawNode || !layer->m_player1) return;
+        g_trajectoryPoints.push_back(layer->m_player1->getPosition());
+        // Keep a bounded, recent path so long levels do not allocate forever.
+        if (g_trajectoryPoints.size() > 72) g_trajectoryPoints.erase(g_trajectoryPoints.begin());
+        g_trajectoryDrawNode->clear();
+        const ccColor4F trailColor = {0.10f, 0.88f, 1.0f, 0.78f};
+        for (std::size_t i = 1; i < g_trajectoryPoints.size(); ++i) {
+            const float fade = static_cast<float>(i) / static_cast<float>(g_trajectoryPoints.size());
+            const ccColor4F color = {trailColor.r, trailColor.g, trailColor.b, trailColor.a * fade};
+            g_trajectoryDrawNode->drawSegment(g_trajectoryPoints[i - 1], g_trajectoryPoints[i], 2.1f, color);
+        }
+    }
+
+    void updateClickIndicator(PlayLayer* layer, float dt) {
+        if (!layer) return;
+        if (g_clickLayer != layer) {
+            g_clickLayer = layer;
+            g_clickLabel = nullptr;
+            g_clickFlashRemaining = 0.f;
+        }
+        if (!showClicksEnabled()) {
+            if (g_clickLabel) g_clickLabel->setVisible(false);
+            g_clickFlashRemaining = 0.f;
+            return;
+        }
+        if (!g_clickLabel) {
+            g_clickLabel = CCLabelBMFont::create("CLICK", "chatFont.fnt");
+            if (g_clickLabel) {
+                g_clickLabel->setTag(kClickLabelTag);
+                g_clickLabel->setScale(0.48f);
+                g_clickLabel->setColor({255, 228, 80});
+                g_clickLabel->setVisible(false);
+                layer->addChild(g_clickLabel, 9997);
+            }
+        }
+        g_clickFlashRemaining = std::max(0.f, g_clickFlashRemaining - std::max(0.f, dt));
+        if (g_clickLabel && layer->m_player1 && g_clickFlashRemaining > 0.f) {
+            const auto pos = layer->m_player1->getPosition();
+            g_clickLabel->setPosition({pos.x, pos.y + 28.f});
+            g_clickLabel->setVisible(true);
+        } else if (g_clickLabel) {
+            g_clickLabel->setVisible(false);
+        }
+    }
+
+    std::filesystem::path customMenuMusicFile() {
+        return Mod::get()->getSaveDir() / "custom-menu.mp3";
+    }
+
+    void applyCustomMenuMusic() {
+        // Custom menu music is optional: the user places custom-menu.mp3 inside
+        // this mod's save directory. It is never started while a level is active.
+        auto* audio = FMODAudioEngine::sharedEngine();
+        if (!audio) return;
+        if (PlayLayer::get()) {
+            g_customMenuMusicApplied = false;
+            return;
+        }
+        if (customMenuMusicEnabled()) {
+            const auto path = customMenuMusicFile();
+            std::error_code ec;
+            if (!std::filesystem::exists(path, ec) || ec) return;
+            const auto nativePath = path.string();
+            if (!g_customMenuMusicApplied || g_customMenuMusicPath != nativePath) {
+                audio->playMusic(gd::string(nativePath.c_str()), true, 0.35f, 0);
+                g_customMenuMusicPath = nativePath;
+                g_customMenuMusicApplied = true;
+            }
+        } else if (g_customMenuMusicApplied) {
+            audio->playMusic("menuLoop.mp3", true, 0.35f, 0);
+            g_customMenuMusicApplied = false;
+            g_customMenuMusicPath.clear();
+        }
+    }
+
+    void setPauseSpritesAlpha(CCNode* node, GLubyte alpha) {
+        if (!node) return;
+        if (auto* sprite = typeinfo_cast<CCSprite*>(node)) sprite->setOpacity(alpha);
+        else if (auto* label = typeinfo_cast<CCLabelBMFont*>(node)) label->setOpacity(alpha);
+        else if (auto* layerColor = typeinfo_cast<CCLayerColor*>(node)) layerColor->setOpacity(alpha);
+        if (auto* children = node->getChildren()) {
+            for (unsigned int i = 0; i < children->count(); ++i) {
+                setPauseSpritesAlpha(static_cast<CCNode*>(children->objectAtIndex(i)), alpha);
+            }
+        }
+    }
 
     enum class BotMode { Idle, Recording, Playing };
 
@@ -317,6 +761,11 @@ namespace {
     }
 }
 
+class MegaSoftToolsPopup;
+class MegaSoftUnlockPopup;
+class MegaSoftEditorPopup;
+class MegaSoftVisualsPopup;
+
 class MegaSoftPulsePopup : public Popup {
 private:
     ButtonSprite* m_noClipSprite = nullptr;
@@ -351,9 +800,9 @@ protected:
             return sprite;
         };
 
-        const float left = size.width * 0.29f;
+        const float left = size.width * 0.36f;
         const float center = size.width * 0.50f;
-        const float right = size.width * 0.71f;
+        const float right = size.width * 0.64f;
         const float rowToggles = size.height - 72.f;
         const float rowMusic = size.height - 118.f;
         const float rowSpeed = size.height - 164.f;
@@ -385,16 +834,14 @@ protected:
         addButton("BOT LOAD", menu_selector(MegaSoftPulsePopup::onLoad), left, rowBot3, "GJ_button_02.png");
         addButton("BOT STATUS", menu_selector(MegaSoftPulsePopup::onBotStatus), right, rowBot3, "GJ_button_01.png");
 
-        auto* note = CCLabelBMFont::create("RECORD > SAVE > LOAD > PLAY", "chatFont.fnt");
-        if (note) {
-            note->setScale(0.32f);
-            note->setPosition({size.width * 0.5f, 25.f});
-            m_mainLayer->addChild(note);
-        }
+        addButton("MORE TOOLS", menu_selector(MegaSoftPulsePopup::onMore),
+            center, 27.f, "GJ_button_01.png");
         return true;
     }
 
 public:
+    void onMore(CCObject*);
+
     static MegaSoftPulsePopup* create() {
         auto* popup = new MegaSoftPulsePopup();
         if (popup && popup->init()) {
@@ -507,6 +954,738 @@ public:
     }
 };
 
+class MegaSoftToolsPopup : public Popup {
+private:
+    ButtonSprite* m_fpsEnabledSprite = nullptr;
+    ButtonSprite* m_fpsValueSprite = nullptr;
+    ButtonSprite* m_retrySprite = nullptr;
+    ButtonSprite* m_hitboxSprite = nullptr;
+    ButtonSprite* m_cpsSprite = nullptr;
+    ButtonSprite* m_practiceMusicSprite = nullptr;
+    ButtonSprite* m_noclipLimitSprite = nullptr;
+    ButtonSprite* m_noclipLimitValueSprite = nullptr;
+    ButtonSprite* m_frameStepSprite = nullptr;
+    ButtonSprite* m_noDeathEffectSprite = nullptr;
+    ButtonSprite* m_hitboxesOnDeathSprite = nullptr;
+    ButtonSprite* m_confirmExitSprite = nullptr;
+    ButtonSprite* m_layoutModeSprite = nullptr;
+
+    void refreshLabels() {
+        if (m_fpsEnabledSprite) m_fpsEnabledSprite->setString(fpsBypassEnabled() ? "FPS ON" : "FPS OFF");
+        if (m_fpsValueSprite) {
+            char value[24];
+            std::snprintf(value, sizeof(value), "%d FPS", targetFPS());
+            m_fpsValueSprite->setString(value);
+        }
+        if (m_retrySprite) m_retrySprite->setString(autoRetryEnabled() ? "RETRY ON" : "RETRY OFF");
+        if (m_hitboxSprite) m_hitboxSprite->setString(hitboxesEnabled() ? "HITBOXES ON" : "HITBOXES OFF");
+        if (m_cpsSprite) m_cpsSprite->setString(cpsEnabled() ? "CPS ON" : "CPS OFF");
+        if (m_practiceMusicSprite) m_practiceMusicSprite->setString(practiceMusicEnabled() ? "PRACTICE MUSIC ON" : "PRACTICE MUSIC OFF");
+        if (m_noclipLimitSprite) m_noclipLimitSprite->setString(noclipLimitEnabled() ? "NC LIMIT ON" : "NC LIMIT OFF");
+        if (m_noclipLimitValueSprite) m_noclipLimitValueSprite->setString(("NC MAX " + std::to_string(noclipMaxDeaths())).c_str());
+        if (m_frameStepSprite) m_frameStepSprite->setString(frameStepEnabled() ? "FRAME STEP ON" : "FRAME STEP OFF");
+        if (m_noDeathEffectSprite) m_noDeathEffectSprite->setString(noDeathEffectEnabled() ? "NO DEATH FX ON" : "NO DEATH FX OFF");
+        if (m_hitboxesOnDeathSprite) m_hitboxesOnDeathSprite->setString(hitboxesOnDeathEnabled() ? "DEATH HITBOX ON" : "DEATH HITBOX OFF");
+        if (m_confirmExitSprite) m_confirmExitSprite->setString(confirmExitEnabled() ? "CONFIRM EXIT ON" : "CONFIRM EXIT OFF");
+        if (m_layoutModeSprite) m_layoutModeSprite->setString(layoutModeEnabled() ? "LAYOUT GRID ON" : "LAYOUT GRID OFF");
+    }
+
+protected:
+    bool init() {
+        if (!Popup::init(400.f, 545.f)) return false;
+        setTitle("MegaSoft Pulse - Tools");
+        auto* menu = CCMenu::create();
+        if (!menu || !m_mainLayer) return false;
+        menu->setPosition({0.f, 0.f});
+        m_mainLayer->addChild(menu);
+        const auto size = m_mainLayer->getContentSize();
+        const float left = size.width * 0.36f;
+        const float center = size.width * 0.50f;
+        const float right = size.width * 0.64f;
+        auto addButton = [&](const std::string& text, SEL_MenuHandler selector,
+                             float x, float y, const char* frame) -> ButtonSprite* {
+            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, 0.29f);
+            if (!sprite) return nullptr;
+            auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
+            if (!item) return nullptr;
+            item->setPosition({x, y});
+            menu->addChild(item);
+            return sprite;
+        };
+        const float row1 = size.height - 58.f;
+        const float row2 = size.height - 102.f;
+        const float row3 = size.height - 146.f;
+        const float row4 = size.height - 190.f;
+        const float row5 = size.height - 234.f;
+        const float row6 = size.height - 278.f;
+        const float row7 = size.height - 322.f;
+        const float row8 = size.height - 366.f;
+        const float row9 = size.height - 410.f;
+        m_fpsEnabledSprite = addButton(fpsBypassEnabled() ? "FPS ON" : "FPS OFF",
+            menu_selector(MegaSoftToolsPopup::onToggleFPS), left, row1,
+            fpsBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_retrySprite = addButton(autoRetryEnabled() ? "RETRY ON" : "RETRY OFF",
+            menu_selector(MegaSoftToolsPopup::onToggleRetry), right, row1,
+            autoRetryEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        addButton("FPS -30", menu_selector(MegaSoftToolsPopup::onFPSDown), left, row2, "GJ_button_01.png");
+        m_fpsValueSprite = addButton("", menu_selector(MegaSoftToolsPopup::onFPSInfo), center, row2, "GJ_button_02.png");
+        addButton("FPS +30", menu_selector(MegaSoftToolsPopup::onFPSUp), right, row2, "GJ_button_01.png");
+        m_hitboxSprite = addButton(hitboxesEnabled() ? "HITBOXES ON" : "HITBOXES OFF",
+            menu_selector(MegaSoftToolsPopup::onToggleHitboxes), left, row3,
+            hitboxesEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_cpsSprite = addButton(cpsEnabled() ? "CPS ON" : "CPS OFF",
+            menu_selector(MegaSoftToolsPopup::onToggleCPS), right, row3,
+            cpsEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_practiceMusicSprite = addButton(practiceMusicEnabled() ? "PRACTICE MUSIC ON" : "PRACTICE MUSIC OFF",
+            menu_selector(MegaSoftToolsPopup::onTogglePracticeMusic), center, row4,
+            practiceMusicEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_noclipLimitSprite = addButton(noclipLimitEnabled() ? "NC LIMIT ON" : "NC LIMIT OFF",
+            menu_selector(MegaSoftToolsPopup::onToggleNoclipLimit), left, row5,
+            noclipLimitEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_noclipLimitValueSprite = addButton("", menu_selector(MegaSoftToolsPopup::onChangeNoclipMax), right, row5, "GJ_button_01.png");
+        m_noDeathEffectSprite = addButton(noDeathEffectEnabled() ? "NO DEATH FX ON" : "NO DEATH FX OFF",
+            menu_selector(MegaSoftToolsPopup::onToggleNoDeathEffect), left, row6,
+            noDeathEffectEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_hitboxesOnDeathSprite = addButton(hitboxesOnDeathEnabled() ? "DEATH HITBOX ON" : "DEATH HITBOX OFF",
+            menu_selector(MegaSoftToolsPopup::onToggleHitboxesOnDeath), right, row6,
+            hitboxesOnDeathEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_frameStepSprite = addButton(frameStepEnabled() ? "FRAME STEP ON" : "FRAME STEP OFF",
+            menu_selector(MegaSoftToolsPopup::onToggleFrameStep), left, row7,
+            frameStepEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        addButton("STEP +1", menu_selector(MegaSoftToolsPopup::onStepFrame), right, row7, "GJ_button_01.png");
+        addButton("CP PREV", menu_selector(MegaSoftToolsPopup::onPreviousCheckpoint), left, row8, "GJ_button_01.png");
+        addButton("CP NEXT", menu_selector(MegaSoftToolsPopup::onNextCheckpoint), right, row8, "GJ_button_01.png");
+        m_layoutModeSprite = addButton(layoutModeEnabled() ? "LAYOUT GRID ON" : "LAYOUT GRID OFF",
+            menu_selector(MegaSoftToolsPopup::onToggleLayoutMode), center, row9,
+            layoutModeEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_confirmExitSprite = addButton(confirmExitEnabled() ? "CONFIRM EXIT ON" : "CONFIRM EXIT OFF",
+            menu_selector(MegaSoftToolsPopup::onToggleConfirmExit), left, 95.f,
+            confirmExitEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        addButton("VISUALS", menu_selector(MegaSoftToolsPopup::onVisuals), center, 95.f, "GJ_button_01.png");
+        addButton("EDITOR", menu_selector(MegaSoftToolsPopup::onEditor), right, 95.f, "GJ_button_01.png");
+        addButton("FAST RESET", menu_selector(MegaSoftToolsPopup::onFastReset), left, 60.f, "GJ_button_01.png");
+        addButton("UNLOCKS", menu_selector(MegaSoftToolsPopup::onUnlocks), right, 60.f, "GJ_button_01.png");
+        addButton("BACK", menu_selector(MegaSoftToolsPopup::onBack), center, 27.f, "GJ_button_01.png");
+        refreshLabels();
+        return true;
+    }
+
+public:
+    static MegaSoftToolsPopup* create() {
+        auto* popup = new MegaSoftToolsPopup();
+        if (popup && popup->init()) { popup->autorelease(); return popup; }
+        delete popup;
+        return nullptr;
+    }
+
+    void onToggleFPS(CCObject*) {
+        setFPSBypassEnabled(!fpsBypassEnabled());
+        applyFPSBypass();
+        refreshLabels();
+        notify(std::string("MegaSoft Pulse: FPS bypass ") + (fpsBypassEnabled() ? "ON" : "OFF"));
+    }
+    void onFPSDown(CCObject*) {
+        setTargetFPS(targetFPS() - 30);
+        applyFPSBypass();
+        refreshLabels();
+    }
+    void onFPSUp(CCObject*) {
+        setTargetFPS(targetFPS() + 30);
+        applyFPSBypass();
+        refreshLabels();
+    }
+    void onFPSInfo(CCObject*) {
+        notify("FPS target: " + std::to_string(targetFPS()) + ". Actual FPS is limited by the device/display.");
+    }
+    void onToggleRetry(CCObject*) {
+        setAutoRetryEnabled(!autoRetryEnabled());
+        refreshLabels();
+        notify(std::string("MegaSoft Pulse: Auto-Retry ") + (autoRetryEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleHitboxes(CCObject*) {
+        const bool enabled = !hitboxesEnabled();
+        setHitboxesEnabled(enabled);
+        auto* layer = PlayLayer::get();
+        if (layer) {
+            layer->toggleDebugDraw();
+            g_debugDrawLayer = layer;
+        }
+        refreshLabels();
+        notify(enabled ? "MegaSoft Pulse: Hitboxes ON" : "MegaSoft Pulse: Hitboxes OFF");
+    }
+    void onToggleCPS(CCObject*) {
+        setCPSEnabled(!cpsEnabled());
+        if (!cpsEnabled() && g_cpsLabel) g_cpsLabel->setVisible(false);
+        refreshLabels();
+        notify(std::string("MegaSoft Pulse: CPS ") + (cpsEnabled() ? "ON" : "OFF"));
+    }
+    void onTogglePracticeMusic(CCObject*) {
+        auto* layer = PlayLayer::get();
+        if (!layer) {
+            notify("Practice Music Hack: enter a level first");
+            return;
+        }
+        const bool enabled = !practiceMusicEnabled();
+        layer->toggleMusicInPractice();
+        setPracticeMusicEnabled(enabled);
+        g_practiceMusicLayer = layer;
+        refreshLabels();
+        notify(enabled ? "Practice Music Hack: toggled ON" : "Practice Music Hack: toggled OFF");
+    }
+    void onFastReset(CCObject*) {
+        auto* layer = PlayLayer::get();
+        if (!layer) {
+            notify("Fast Reset: enter a level first");
+            onClose(nullptr);
+            return;
+        }
+        stopBot(false);
+        onClose(nullptr);
+        layer->resetLevel();
+    }
+    void onToggleNoclipLimit(CCObject*) {
+        setNoclipLimitEnabled(!noclipLimitEnabled());
+        refreshLabels();
+        notify(std::string("Noclip limit ") + (noclipLimitEnabled() ? "ON" : "OFF"));
+    }
+    void onChangeNoclipMax(CCObject*) {
+        int next = noclipMaxDeaths() + 1;
+        if (next > 10) next = 1;
+        setNoclipMaxDeaths(next);
+        refreshLabels();
+        notify("Noclip collision limit: " + std::to_string(noclipMaxDeaths()));
+    }
+    void onToggleNoDeathEffect(CCObject*) {
+        setNoDeathEffectEnabled(!noDeathEffectEnabled());
+        refreshLabels();
+        notify(std::string("No Death Effect ") + (noDeathEffectEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleHitboxesOnDeath(CCObject*) {
+        setHitboxesOnDeathEnabled(!hitboxesOnDeathEnabled());
+        refreshLabels();
+        notify(std::string("Show Hitboxes on Death ") + (hitboxesOnDeathEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleFrameStep(CCObject*) {
+        setFrameStepEnabled(!frameStepEnabled());
+        g_frameStepPending = false;
+        refreshLabels();
+        notify(frameStepEnabled() ? "Frame Step ON: game updates only after STEP +1" : "Frame Step OFF");
+    }
+    void onStepFrame(CCObject*) {
+        if (!frameStepEnabled()) {
+            notify("Turn FRAME STEP ON first");
+            return;
+        }
+        g_frameStepPending = true;
+        notify("Frame Step: one update queued");
+    }
+    void onPreviousCheckpoint(CCObject*) { cycleCheckpoint(-1); }
+    void onNextCheckpoint(CCObject*) { cycleCheckpoint(1); }
+    void cycleCheckpoint(int direction) {
+        auto* layer = PlayLayer::get();
+        if (!layer || !layer->m_checkpointArray || layer->m_checkpointArray->count() == 0) {
+            notify("Checkpoint Switcher: no checkpoints yet; use Practice Mode first");
+            return;
+        }
+        const unsigned int count = layer->m_checkpointArray->count();
+        if (g_checkpointIndex < 0 || g_checkpointIndex >= static_cast<int>(count)) {
+            g_checkpointIndex = direction > 0 ? 0 : static_cast<int>(count) - 1;
+        } else {
+            g_checkpointIndex = (g_checkpointIndex + direction + static_cast<int>(count)) % static_cast<int>(count);
+        }
+        auto* checkpoint = static_cast<CheckpointObject*>(layer->m_checkpointArray->objectAtIndex(g_checkpointIndex));
+        if (checkpoint) {
+            layer->loadFromCheckpoint(checkpoint);
+            notify("Checkpoint " + std::to_string(g_checkpointIndex + 1) + "/" + std::to_string(count));
+        }
+    }
+    void onToggleConfirmExit(CCObject*) {
+        setConfirmExitEnabled(!confirmExitEnabled());
+        refreshLabels();
+        notify(std::string("Confirm Exit ") + (confirmExitEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleLayoutMode(CCObject*) {
+        setLayoutModeEnabled(!layoutModeEnabled());
+        refreshLabels();
+        notify(layoutModeEnabled() ? "Layout Mode ON: 32px guide grid in levels" : "Layout Mode OFF");
+    }
+    void onUnlocks(CCObject*);
+    void onEditor(CCObject*);
+    void onVisuals(CCObject*);
+    void onBack(CCObject*) {
+        onClose(nullptr);
+        if (auto* popup = MegaSoftPulsePopup::create()) popup->show();
+    }
+};
+
+class MegaSoftUnlockPopup : public Popup {
+private:
+    ButtonSprite* m_unlockAllSprite = nullptr;
+    ButtonSprite* m_iconKitSprite = nullptr;
+    ButtonSprite* m_mainLevelsSprite = nullptr;
+    ButtonSprite* m_shopSprite = nullptr;
+    ButtonSprite* m_vaultSprite = nullptr;
+    ButtonSprite* m_textLengthSprite = nullptr;
+
+    void refreshLabels() {
+        if (m_unlockAllSprite) m_unlockAllSprite->setString(unlockAllEnabled() ? "UNLOCK ALL ON" : "UNLOCK ALL OFF");
+        if (m_iconKitSprite) m_iconKitSprite->setString(iconKitBypassEnabled() ? "ICON KIT ON" : "ICON KIT OFF");
+        if (m_mainLevelsSprite) m_mainLevelsSprite->setString(mainLevelsBypassEnabled() ? "MAIN LVL ON" : "MAIN LVL OFF");
+        if (m_shopSprite) m_shopSprite->setString(shopUnlockBypassEnabled() ? "SHOP ON" : "SHOP OFF");
+        if (m_vaultSprite) m_vaultSprite->setString(vaultBypassEnabled() ? "VAULT ON" : "VAULT OFF");
+        if (m_textLengthSprite) m_textLengthSprite->setString(textLengthBypassEnabled() ? "TEXT LIMIT ON" : "TEXT LIMIT OFF");
+    }
+
+protected:
+    bool init() {
+        if (!Popup::init(380.f, 365.f)) return false;
+        setTitle("MegaSoft Pulse - Unlocks");
+        auto* menu = CCMenu::create();
+        if (!menu || !m_mainLayer) return false;
+        menu->setPosition({0.f, 0.f});
+        m_mainLayer->addChild(menu);
+        const auto size = m_mainLayer->getContentSize();
+        auto addButton = [&](const std::string& text, SEL_MenuHandler selector, float x, float y, const char* frame) -> ButtonSprite* {
+            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, 0.30f);
+            if (!sprite) return nullptr;
+            auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
+            if (!item) return nullptr;
+            item->setPosition({x, y});
+            menu->addChild(item);
+            return sprite;
+        };
+        const float left = size.width * 0.36f;
+        const float center = size.width * 0.50f;
+        const float right = size.width * 0.64f;
+        m_unlockAllSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleUnlockAll), center, size.height - 58.f,
+            unlockAllEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_iconKitSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleIconKit), left, size.height - 112.f,
+            iconKitBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_mainLevelsSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleMainLevels), right, size.height - 112.f,
+            mainLevelsBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_shopSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleShop), left, size.height - 166.f,
+            shopUnlockBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_vaultSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleVault), right, size.height - 166.f,
+            vaultBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_textLengthSprite = addButton("", menu_selector(MegaSoftUnlockPopup::onToggleTextLength), center, size.height - 220.f,
+            textLengthBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        addButton("INFO", menu_selector(MegaSoftUnlockPopup::onInfo), left, size.height - 275.f, "GJ_button_01.png");
+        addButton("BACK", menu_selector(MegaSoftUnlockPopup::onBack), right, size.height - 275.f, "GJ_button_01.png");
+        refreshLabels();
+        return true;
+    }
+public:
+    static MegaSoftUnlockPopup* create() {
+        auto* popup = new MegaSoftUnlockPopup();
+        if (popup && popup->init()) { popup->autorelease(); return popup; }
+        delete popup;
+        return nullptr;
+    }
+    void onToggleUnlockAll(CCObject*) {
+        setUnlockAllEnabled(!unlockAllEnabled()); refreshLabels();
+        notify(std::string("Unlock All checks ") + (unlockAllEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleShop(CCObject*) {
+        setShopUnlockBypassEnabled(!shopUnlockBypassEnabled()); refreshLabels();
+        notify(std::string("Shop unlock check ") + (shopUnlockBypassEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleVault(CCObject*) {
+        setVaultBypassEnabled(!vaultBypassEnabled()); refreshLabels();
+        notify(std::string("Vault unlock check ") + (vaultBypassEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleIconKit(CCObject*) {
+        setIconKitBypassEnabled(!iconKitBypassEnabled()); refreshLabels();
+        notify(std::string("Icon Kit local unlock check ") + (iconKitBypassEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleMainLevels(CCObject*) {
+        setMainLevelsBypassEnabled(!mainLevelsBypassEnabled()); refreshLabels();
+        notify(std::string("Main Levels local check ") + (mainLevelsBypassEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleTextLength(CCObject*) {
+        setTextLengthBypassEnabled(!textLengthBypassEnabled()); refreshLabels();
+        notify(std::string("Text Length Bypass ") + (textLengthBypassEnabled() ? "ON" : "OFF") + " (new text fields)");
+    }
+    void onInfo(CCObject*) {
+        FLAlertLayer::create("Unlock features", "These switches override local unlock-status checks. They do not grant currency, save permanent progress, or guarantee every shop/vault screen accepts the bypass.", "OK")->show();
+    }
+    void onBack(CCObject*);
+};
+
+void MegaSoftToolsPopup::onUnlocks(CCObject*) {
+    onClose(nullptr);
+    if (auto* popup = MegaSoftUnlockPopup::create()) popup->show();
+}
+
+void MegaSoftUnlockPopup::onBack(CCObject*) {
+    onClose(nullptr);
+    if (auto* popup = MegaSoftToolsPopup::create()) popup->show();
+}
+
+void MegaSoftPulsePopup::onMore(CCObject*) {
+    onClose(nullptr);
+    if (auto* popup = MegaSoftToolsPopup::create()) popup->show();
+}
+
+class MegaSoftEditorPopup;
+void reopenEditorPopup();
+
+class MegaSoftAbsolutePositionPopup : public Popup, public TextInputDelegate {
+private:
+    CCTextInputNode* m_xInput = nullptr;
+    CCTextInputNode* m_yInput = nullptr;
+
+protected:
+    bool init() {
+        if (!Popup::init(330.f, 230.f)) return false;
+        setTitle("Absolute X / Y");
+        const auto size = m_mainLayer->getContentSize();
+
+        auto* xLabel = CCLabelBMFont::create("X", "bigFont.fnt");
+        auto* yLabel = CCLabelBMFont::create("Y", "bigFont.fnt");
+        if (!xLabel || !yLabel) return false;
+        xLabel->setScale(0.55f);
+        yLabel->setScale(0.55f);
+        xLabel->setPosition({size.width * 0.13f, size.height - 82.f});
+        yLabel->setPosition({size.width * 0.53f, size.height - 82.f});
+        m_mainLayer->addChild(xLabel, 2);
+        m_mainLayer->addChild(yLabel, 2);
+
+        m_xInput = CCTextInputNode::create(105.f, 25.f, "X coordinate", "bigFont.fnt");
+        m_yInput = CCTextInputNode::create(105.f, 25.f, "Y coordinate", "bigFont.fnt");
+        if (!m_xInput || !m_yInput) return false;
+        m_xInput->setPosition({size.width * 0.31f, size.height - 82.f});
+        m_yInput->setPosition({size.width * 0.72f, size.height - 82.f});
+        m_xInput->setDelegate(this);
+        m_yInput->setDelegate(this);
+        m_xInput->setMaxLabelLength(16);
+        m_yInput->setMaxLabelLength(16);
+        m_xInput->setString("0");
+        m_yInput->setString("0");
+        m_mainLayer->addChild(m_xInput, 3);
+        m_mainLayer->addChild(m_yInput, 3);
+
+        auto* menu = CCMenu::create();
+        if (!menu) return false;
+        menu->setPosition({0.f, 0.f});
+        m_mainLayer->addChild(menu);
+        auto addButton = [&](const char* label, SEL_MenuHandler selector, float x) {
+            auto* sprite = ButtonSprite::create(label, "bigFont.fnt", "GJ_button_01.png", 0.32f);
+            if (!sprite) return;
+            auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
+            if (!item) return;
+            item->setPosition({x, 34.f});
+            menu->addChild(item);
+        };
+        addButton("APPLY", menu_selector(MegaSoftAbsolutePositionPopup::onApply), size.width * 0.32f);
+        addButton("BACK", menu_selector(MegaSoftAbsolutePositionPopup::onBack), size.width * 0.68f);
+        return true;
+    }
+
+public:
+    static MegaSoftAbsolutePositionPopup* create() {
+        auto* popup = new MegaSoftAbsolutePositionPopup();
+        if (popup && popup->init()) { popup->autorelease(); return popup; }
+        delete popup;
+        return nullptr;
+    }
+    void textChanged(CCTextInputNode*) override {}
+
+    void onApply(CCObject*) {
+        std::string xText;
+        std::string yText;
+        if (m_xInput) xText = m_xInput->getString();
+        if (m_yInput) yText = m_yInput->getString();
+        std::istringstream xStream(xText);
+        std::istringstream yStream(yText);
+        float x = 0.f;
+        float y = 0.f;
+        if (!(xStream >> x) || !(yStream >> y) || !std::isfinite(x) || !std::isfinite(y)) {
+            notify("Absolute X/Y: enter valid numbers");
+            return;
+        }
+        xStream >> std::ws;
+        yStream >> std::ws;
+        if (!xStream.eof() || !yStream.eof()) {
+            notify("Absolute X/Y: enter only numeric values");
+            return;
+        }
+        auto* editorLayer = LevelEditorLayer::get();
+        auto* editor = editorLayer ? editorLayer->m_editorUI : nullptr;
+        auto* selected = editor ? editor->getSelectedObjects() : nullptr;
+        if (!selected || selected->count() == 0) {
+            notify("Absolute X/Y: select one or more objects in the editor first");
+            return;
+        }
+        unsigned int changed = 0;
+        for (unsigned int i = 0; i < selected->count(); ++i) {
+            auto* object = static_cast<GameObject*>(selected->objectAtIndex(i));
+            if (!object) continue;
+            object->setPosition({x, y});
+            ++changed;
+        }
+        notify("Absolute X/Y: set " + std::to_string(changed) + " object(s) to X=" + xText + ", Y=" + yText);
+        onClose(nullptr);
+        reopenEditorPopup();
+    }
+    void onBack(CCObject*) {
+        onClose(nullptr);
+        reopenEditorPopup();
+    }
+};
+
+class MegaSoftEditorPopup : public Popup {
+private:
+    ButtonSprite* m_moveStepSprite = nullptr;
+
+    float moveStep() const {
+        float value = Mod::get()->getSavedValue<float>("editor-move-step", 1.f);
+        if (value < 0.5f) return 0.1f;
+        if (value < 5.f) return 1.f;
+        return 10.f;
+    }
+    float scaleStep() const {
+        float value = Mod::get()->getSavedValue<float>("editor-scale-step", 0.1f);
+        return std::clamp(value, 0.01f, 1.f);
+    }
+    void refreshLabels() {
+        if (!m_moveStepSprite) return;
+        char label[32];
+        std::snprintf(label, sizeof(label), "MOVE STEP %.1f", static_cast<double>(moveStep()));
+        m_moveStepSprite->setString(label);
+    }
+    void cycleMoveStep() {
+        const float current = moveStep();
+        const float next = current < 0.5f ? 1.f : (current < 5.f ? 10.f : 0.1f);
+        Mod::get()->setSavedValue("editor-move-step", next);
+        refreshLabels();
+        notify("Editor move step set to " + std::to_string(next));
+    }
+    void modifySelectedObjects(float dx, float dy, float scaleDelta, float rotationDelta) {
+        auto* editorLayer = LevelEditorLayer::get();
+        auto* editor = editorLayer ? editorLayer->m_editorUI : nullptr;
+        auto* selected = editor ? editor->getSelectedObjects() : nullptr;
+        if (!selected || selected->count() == 0) {
+            notify("Editor tools: select one or more objects first");
+            return;
+        }
+        unsigned int changed = 0;
+        for (unsigned int i = 0; i < selected->count(); ++i) {
+            auto* object = static_cast<GameObject*>(selected->objectAtIndex(i));
+            if (!object) continue;
+            if (dx != 0.f || dy != 0.f) {
+                object->setPosition({object->getPositionX() + dx, object->getPositionY() + dy});
+            }
+            if (scaleDelta != 0.f) {
+                object->setScale(std::clamp(object->getScale() + scaleDelta, 0.1f, 100.f));
+            }
+            if (rotationDelta != 0.f) {
+                object->setRotation(object->getRotation() + rotationDelta);
+            }
+            ++changed;
+        }
+        if (changed == 0) notify("Editor tools: no editable objects selected");
+        else notify("Editor tools: modified " + std::to_string(changed) + " object(s)");
+    }
+
+protected:
+    bool init() {
+        if (!Popup::init(400.f, 410.f)) return false;
+        setTitle("MegaSoft Pulse - Editor");
+        auto* menu = CCMenu::create();
+        if (!menu || !m_mainLayer) return false;
+        menu->setPosition({0.f, 0.f});
+        m_mainLayer->addChild(menu);
+        const auto size = m_mainLayer->getContentSize();
+        const float left = size.width * 0.35f;
+        const float center = size.width * 0.50f;
+        const float right = size.width * 0.65f;
+        auto addButton = [&](const std::string& text, SEL_MenuHandler selector,
+                             float x, float y, const char* frame) -> ButtonSprite* {
+            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, 0.29f);
+            if (!sprite) return nullptr;
+            auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
+            if (!item) return nullptr;
+            item->setPosition({x, y});
+            menu->addChild(item);
+            return sprite;
+        };
+        const float row1 = size.height - 54.f;
+        const float row2 = size.height - 98.f;
+        const float row3 = size.height - 142.f;
+        const float row4 = size.height - 186.f;
+        const float row5 = size.height - 230.f;
+        const float row6 = size.height - 274.f;
+        addButton("X -", menu_selector(MegaSoftEditorPopup::onXMinus), left, row1, "GJ_button_01.png");
+        addButton("X +", menu_selector(MegaSoftEditorPopup::onXPlus), right, row1, "GJ_button_01.png");
+        addButton("Y -", menu_selector(MegaSoftEditorPopup::onYMinus), left, row2, "GJ_button_01.png");
+        addButton("Y +", menu_selector(MegaSoftEditorPopup::onYPlus), right, row2, "GJ_button_01.png");
+        addButton("ROT -15", menu_selector(MegaSoftEditorPopup::onRotateMinus15), left, row3, "GJ_button_01.png");
+        addButton("ROT +15", menu_selector(MegaSoftEditorPopup::onRotatePlus15), right, row3, "GJ_button_01.png");
+        addButton("ROT -90", menu_selector(MegaSoftEditorPopup::onRotateMinus90), left, row4, "GJ_button_01.png");
+        addButton("ROT +90", menu_selector(MegaSoftEditorPopup::onRotatePlus90), right, row4, "GJ_button_01.png");
+        addButton("SCALE -", menu_selector(MegaSoftEditorPopup::onScaleMinus), left, row5, "GJ_button_01.png");
+        addButton("SCALE +", menu_selector(MegaSoftEditorPopup::onScalePlus), right, row5, "GJ_button_01.png");
+        m_moveStepSprite = addButton("MOVE STEP 1.0", menu_selector(MegaSoftEditorPopup::onCycleMoveStep), center, row6, "GJ_button_02.png");
+        addButton("ABSOLUTE X/Y", menu_selector(MegaSoftEditorPopup::onAbsolutePosition), center, size.height - 322.f, "GJ_button_02.png");
+        addButton("INFO", menu_selector(MegaSoftEditorPopup::onInfo), left, 36.f, "GJ_button_01.png");
+        addButton("BACK", menu_selector(MegaSoftEditorPopup::onBack), right, 36.f, "GJ_button_01.png");
+        refreshLabels();
+        return true;
+    }
+public:
+    static MegaSoftEditorPopup* create() {
+        auto* popup = new MegaSoftEditorPopup();
+        if (popup && popup->init()) { popup->autorelease(); return popup; }
+        delete popup;
+        return nullptr;
+    }
+    void onXMinus(CCObject*) { modifySelectedObjects(-moveStep(), 0.f, 0.f, 0.f); }
+    void onXPlus(CCObject*) { modifySelectedObjects(moveStep(), 0.f, 0.f, 0.f); }
+    void onYMinus(CCObject*) { modifySelectedObjects(0.f, -moveStep(), 0.f, 0.f); }
+    void onYPlus(CCObject*) { modifySelectedObjects(0.f, moveStep(), 0.f, 0.f); }
+    void onRotateMinus15(CCObject*) { modifySelectedObjects(0.f, 0.f, 0.f, -15.f); }
+    void onRotatePlus15(CCObject*) { modifySelectedObjects(0.f, 0.f, 0.f, 15.f); }
+    void onRotateMinus90(CCObject*) { modifySelectedObjects(0.f, 0.f, 0.f, -90.f); }
+    void onRotatePlus90(CCObject*) { modifySelectedObjects(0.f, 0.f, 0.f, 90.f); }
+    void onScaleMinus(CCObject*) { modifySelectedObjects(0.f, 0.f, -scaleStep(), 0.f); }
+    void onScalePlus(CCObject*) { modifySelectedObjects(0.f, 0.f, scaleStep(), 0.f); }
+    void onCycleMoveStep(CCObject*) { cycleMoveStep(); }
+    void onAbsolutePosition(CCObject*) {
+        onClose(nullptr);
+        if (auto* popup = MegaSoftAbsolutePositionPopup::create()) popup->show();
+    }
+    void onInfo(CCObject*) {
+        FLAlertLayer::create("Editor helpers", "Select objects first. X/Y nudge the selection by 0.1, 1 or 10 units; MOVE STEP changes the amount. ROT buttons rotate selected objects by 15 or 90 degrees. SCALE changes uniform scale by 0.1. ABSOLUTE X/Y opens numeric fields to set the selected objects at the exact entered coordinate.", "OK")->show();
+    }
+    void onBack(CCObject*) {
+        onClose(nullptr);
+        if (auto* popup = MegaSoftToolsPopup::create()) popup->show();
+    }
+};
+
+void reopenEditorPopup() {
+    if (auto* popup = MegaSoftEditorPopup::create()) popup->show();
+}
+
+class MegaSoftVisualsPopup : public Popup {
+    ButtonSprite* m_trajectorySprite = nullptr;
+    ButtonSprite* m_clicksSprite = nullptr;
+    ButtonSprite* m_customMusicSprite = nullptr;
+    ButtonSprite* m_transparentPauseSprite = nullptr;
+    ButtonSprite* m_hidePauseSprite = nullptr;
+    void refreshLabels() {
+        if (m_trajectorySprite) m_trajectorySprite->setString(trajectoryEnabled() ? "TRAIL ON" : "TRAIL OFF");
+        if (m_clicksSprite) m_clicksSprite->setString(showClicksEnabled() ? "CLICKS ON" : "CLICKS OFF");
+        if (m_customMusicSprite) m_customMusicSprite->setString(customMenuMusicEnabled() ? "CUSTOM MUSIC ON" : "CUSTOM MUSIC OFF");
+        if (m_transparentPauseSprite) m_transparentPauseSprite->setString(transparentPauseEnabled() ? "PAUSE ALPHA ON" : "PAUSE ALPHA OFF");
+        if (m_hidePauseSprite) m_hidePauseSprite->setString(hidePauseButtonEnabled() ? "HIDE PAUSE ON" : "HIDE PAUSE OFF");
+    }
+protected:
+    bool init() {
+        if (!Popup::init(390.f, 395.f)) return false;
+        setTitle("MegaSoft Pulse - Visuals");
+        auto* menu = CCMenu::create();
+        if (!menu || !m_mainLayer) return false;
+        menu->setPosition({0.f, 0.f});
+        m_mainLayer->addChild(menu);
+        const auto size = m_mainLayer->getContentSize();
+        const float left = size.width * 0.35f;
+        const float center = size.width * 0.50f;
+        const float right = size.width * 0.65f;
+        auto addButton = [&](const std::string& text, SEL_MenuHandler selector,
+                             float x, float y, const char* frame) -> ButtonSprite* {
+            auto* sprite = ButtonSprite::create(text.c_str(), "bigFont.fnt", frame, 0.30f);
+            if (!sprite) return nullptr;
+            auto* item = CCMenuItemSpriteExtra::create(sprite, this, selector);
+            if (!item) return nullptr;
+            item->setPosition({x, y});
+            menu->addChild(item);
+            return sprite;
+        };
+        m_trajectorySprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleTrajectory), left, size.height - 62.f,
+            trajectoryEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_clicksSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleClicks), right, size.height - 62.f,
+            showClicksEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_customMusicSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleCustomMusic), center, size.height - 120.f,
+            customMenuMusicEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_transparentPauseSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleTransparentPause), left, size.height - 178.f,
+            transparentPauseEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        m_hidePauseSprite = addButton("", menu_selector(MegaSoftVisualsPopup::onToggleHidePause), right, size.height - 178.f,
+            hidePauseButtonEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
+        addButton("MUSIC FILE INFO", menu_selector(MegaSoftVisualsPopup::onMusicInfo), center, size.height - 242.f, "GJ_button_01.png");
+        addButton("BACK", menu_selector(MegaSoftVisualsPopup::onBack), center, 28.f, "GJ_button_01.png");
+        refreshLabels();
+        return true;
+    }
+public:
+    static MegaSoftVisualsPopup* create() {
+        auto* popup = new MegaSoftVisualsPopup();
+        if (popup && popup->init()) { popup->autorelease(); return popup; }
+        delete popup;
+        return nullptr;
+    }
+    void onToggleTrajectory(CCObject*) {
+        setTrajectoryEnabled(!trajectoryEnabled());
+        if (!trajectoryEnabled() && g_trajectoryDrawNode) {
+            g_trajectoryDrawNode->removeFromParentAndCleanup(true);
+            g_trajectoryDrawNode = nullptr;
+            g_trajectoryLayer = nullptr;
+            g_trajectoryPoints.clear();
+        }
+        refreshLabels();
+        notify(std::string("Position trail ") + (trajectoryEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleClicks(CCObject*) {
+        setShowClicksEnabled(!showClicksEnabled());
+        if (!showClicksEnabled() && g_clickLabel) g_clickLabel->setVisible(false);
+        refreshLabels();
+        notify(std::string("Show Clicks ") + (showClicksEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleCustomMusic(CCObject*) {
+        if (!customMenuMusicEnabled()) {
+            std::error_code ec;
+            if (!std::filesystem::exists(customMenuMusicFile(), ec) || ec) {
+                notify("Copy custom-menu.mp3 into MegaSoft Pulse save folder first");
+                return;
+            }
+            setCustomMenuMusicEnabled(true);
+        } else {
+            setCustomMenuMusicEnabled(false);
+        }
+        applyCustomMenuMusic();
+        refreshLabels();
+        notify(std::string("Custom menu music ") + (customMenuMusicEnabled() ? "ON" : "OFF"));
+    }
+    void onToggleTransparentPause(CCObject*) {
+        setTransparentPauseEnabled(!transparentPauseEnabled());
+        refreshLabels();
+        notify(std::string("Transparent Pause ") + (transparentPauseEnabled() ? "ON (next pause)" : "OFF (next pause)"));
+    }
+    void onToggleHidePause(CCObject*) {
+        setHidePauseButtonEnabled(!hidePauseButtonEnabled());
+        refreshLabels();
+        notify(std::string("Hide Pause Button ") + (hidePauseButtonEnabled() ? "ON" : "OFF"));
+    }
+    void onMusicInfo(CCObject*) {
+        const auto path = customMenuMusicFile().string();
+        FLAlertLayer::create("Custom Menu Music", ("Place your own MP3 file here:\n" + path + "\nThen turn CUSTOM MUSIC ON from the main menu.").c_str(), "OK")->show();
+    }
+    void onBack(CCObject*) {
+        onClose(nullptr);
+        if (auto* popup = MegaSoftToolsPopup::create()) popup->show();
+    }
+};
+
+void MegaSoftToolsPopup::onEditor(CCObject*) {
+    onClose(nullptr);
+    if (auto* popup = MegaSoftEditorPopup::create()) popup->show();
+}
+
+void MegaSoftToolsPopup::onVisuals(CCObject*) {
+    onClose(nullptr);
+    if (auto* popup = MegaSoftVisualsPopup::create()) popup->show();
+}
+
 class MegaSoftPulseOpenDelegate : public CCNode {
 public:
     static MegaSoftPulseOpenDelegate* create() {
@@ -549,6 +1728,72 @@ namespace {
     }
 }
 
+// Local-only unlock-status overrides. These do not add currency or alter server data.
+class $modify(MegaSoftPulseGameStats, GameStatsManager) {
+    bool isItemUnlocked(UnlockType type, int id) {
+        if (unlockAllEnabled()) return true;
+        // The first seven unlock categories in GD 2.2081 are the seven icon forms.
+        const int typeIndex = static_cast<int>(type);
+        if (iconKitBypassEnabled() && typeIndex >= 0 && typeIndex <= 6) return true;
+        return GameStatsManager::isItemUnlocked(type, id);
+    }
+    bool hasCompletedMainLevel(int levelID) {
+        // Local query override only: this does not save completion data.
+        if (mainLevelsBypassEnabled() && levelID >= 1 && levelID <= 21) return true;
+        return GameStatsManager::hasCompletedMainLevel(levelID);
+    }
+    bool isStoreItemUnlocked(int id) {
+        if (shopUnlockBypassEnabled() || unlockAllEnabled()) return true;
+        return GameStatsManager::isStoreItemUnlocked(id);
+    }
+    bool isSecretChestUnlocked(int id) {
+        if (vaultBypassEnabled() || unlockAllEnabled()) return true;
+        return GameStatsManager::isSecretChestUnlocked(id);
+    }
+    bool isGauntletChestUnlocked(int id) {
+        if (vaultBypassEnabled() || unlockAllEnabled()) return true;
+        return GameStatsManager::isGauntletChestUnlocked(id);
+    }
+    bool isSpecialChestUnlocked(gd::string id) {
+        if (vaultBypassEnabled() || unlockAllEnabled()) return true;
+        return GameStatsManager::isSpecialChestUnlocked(id);
+    }
+};
+
+class $modify(MegaSoftPulseTextInputNode, CCTextInputNode) {
+    void setMaxLabelLength(int length) {
+        CCTextInputNode::setMaxLabelLength(textLengthBypassEnabled() ? 1000000 : length);
+    }
+};
+
+class $modify(MegaSoftPulsePlayerObject, PlayerObject) {
+    void playDeathEffect() {
+        if (noDeathEffectEnabled()) return;
+        PlayerObject::playDeathEffect();
+    }
+};
+
+class $modify(MegaSoftPulsePauseLayer, PauseLayer) {
+    void customSetup() {
+        PauseLayer::customSetup();
+        if (transparentPauseEnabled()) setPauseSpritesAlpha(this, 150);
+    }
+    void onQuit(CCObject* sender) {
+        if (!confirmExitEnabled() || g_confirmExitProceed) {
+            PauseLayer::onQuit(sender);
+            return;
+        }
+        auto* pauseLayer = this;
+        createQuickPopup("Confirm Exit", "Leave this level? Your current attempt will be lost.", "Stay", "Exit",
+            [pauseLayer](FLAlertLayer*, bool confirmed) {
+                if (!confirmed) return;
+                g_confirmExitProceed = true;
+                pauseLayer->onQuit(nullptr);
+                g_confirmExitProceed = false;
+            });
+    }
+};
+
 // Add the MegaSoft Pulse quick-open button to each new scene, not just gameplay.
 class $modify(MegaSoftPulseDirector, CCDirector) {
     void drawScene() {
@@ -556,8 +1801,10 @@ class $modify(MegaSoftPulseDirector, CCDirector) {
         // a new track after the toggle has been enabled.
         if (musicMuted()) applyMusicMute();
         applyMusicPitch();
+        applyCustomMenuMusic();
         if (auto* scene = this->getRunningScene()) {
             attachMegaSoftPulseButton(scene);
+            updateLayoutGrid(scene);
         }
         CCDirector::drawScene();
     }
@@ -569,6 +1816,8 @@ class $modify(MegaSoftPulseBaseGameLayer, GJBaseGameLayer) {
     void handleButton(bool down, int button, bool isPlayer1) {
         if (isPlayer1 && !g_injectedInput) {
             recordInput(button, down);
+            if (down && cpsEnabled()) ++g_cpsInputCount;
+            if (down && showClicksEnabled()) g_clickFlashRemaining = 0.22f;
         }
         GJBaseGameLayer::handleButton(down, button, isPlayer1);
     }
@@ -576,22 +1825,71 @@ class $modify(MegaSoftPulseBaseGameLayer, GJBaseGameLayer) {
 
 class $modify(MegaSoftPulsePlayLayer, PlayLayer) {
     void update(float dt) {
-        // Reapply time scale and pitch as levels/music channels change.
-        // The mute action itself is only repeated while muted, never resumed each frame.
+        // In frame-step mode, allow only one PlayLayer update per button press.
+        if (frameStepEnabled() && !g_frameStepPending) return;
+        if (frameStepEnabled()) g_frameStepPending = false;
+        // Restore requested built-in visual/practice modes for each new level instance.
+        if (g_debugDrawLayer != this) {
+            g_debugDrawLayer = this;
+            if (hitboxesEnabled()) this->toggleDebugDraw();
+        }
+        if (g_practiceMusicLayer != this) {
+            g_practiceMusicLayer = this;
+            if (practiceMusicEnabled()) this->toggleMusicInPractice();
+        }
+
         applySpeedhack();
         if (musicMuted()) applyMusicMute();
-
+        updateCPSOverlay(this, dt);
+        updateNoclipStatusOverlay(this);
         if (g_botMode == BotMode::Playing) processPlayback(this);
         PlayLayer::update(dt);
+        updateTrajectoryTrail(this);
+        updateClickIndicator(this, dt);
+        updatePauseButtonVisibility(this);
 
         if (g_botMode == BotMode::Recording || g_botMode == BotMode::Playing) {
             g_botClock += std::max(0.0, static_cast<double>(dt));
         }
+        if (g_autoRetryPending) {
+            g_autoRetryPending = false;
+            if (autoRetryEnabled() && PlayLayer::get() == this && m_player1) this->resetLevel();
+        }
     }
 
     void destroyPlayer(PlayerObject* player, GameObject* object) {
-        if (noclipEnabled()) return;
+        const bool primaryPlayer = player && player == m_player1;
+        if (primaryPlayer && noclipEnabled()) {
+            ++g_noclipDeathCount;
+            g_noclipMaxProgress = std::max(g_noclipMaxProgress, std::clamp(getCurrentPercentInt(), 0, 100));
+            if (!noclipLimitEnabled() || g_noclipDeathCount <= noclipMaxDeaths()) {
+                return;
+            }
+            setNoclipEnabled(false);
+            notify("Noclip limit reached; normal death enabled");
+        }
+        if (primaryPlayer && hitboxesOnDeathEnabled() && !hitboxesEnabled() && !g_noclipDeathDrawActive) {
+            toggleDebugDraw();
+            g_noclipDeathDrawActive = true;
+        }
         PlayLayer::destroyPlayer(player, object);
+        if (autoRetryEnabled() && primaryPlayer) {
+            g_autoRetryPending = true;
+        }
+    }
+
+    void resetLevel() {
+        g_pauseButtonNode = nullptr;
+        g_pauseButtonLayer = nullptr;
+        g_noclipDeathCount = 0;
+        g_noclipMaxProgress = 0;
+        g_checkpointIndex = -1;
+        g_autoRetryPending = false;
+        if (g_noclipDeathDrawActive && !hitboxesEnabled()) {
+            toggleDebugDraw();
+        }
+        g_noclipDeathDrawActive = false;
+        PlayLayer::resetLevel();
     }
 
     void onQuit() {
@@ -605,9 +1903,12 @@ class $modify(MegaSoftPulsePlayLayer, PlayLayer) {
 
 $on_mod(Loaded) {
     if (auto* director = CCDirector::sharedDirector()) {
+        g_originalAnimationInterval = director->getAnimationInterval();
+        if (g_originalAnimationInterval <= 0.0) g_originalAnimationInterval = 1.0 / 60.0;
         if (auto* scheduler = director->getScheduler()) scheduler->setTimeScale(1.0f);
     }
+    applyFPSBypass();
     if (musicMuted()) applyMusicMute();
     applyMusicPitch();
-    log::info("MegaSoft Pulse loaded: fixed popup layout, NoClip, Speedhack, Music Sync and GD Bot");
+    log::info("MegaSoft Pulse v1.1.0 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
 }
