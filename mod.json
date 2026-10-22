@@ -5,10 +5,10 @@
         "win": "2.2081"
     },
     "id": "dev.chatgpt.gdtools",
-    "name": "MegaSoft Pulse",
+    "name": "VETER",
     "version": "1.2.0",
-    "developer": "MegaSoft Pulse",
-    "description": "MegaSoft Pulse: Geometry Dash 2.2 tools for gameplay, practice, overlays, safer multi-slot GD Bot macro saving/loading with loop and playback rate, music pitch sync, editor transform helpers, custom menu music and local unlock checks. Some advanced Mega Hack bypasses are not implemented. GD Bot Continue replays a saved macro in Practice Mode and appends new recorded inputs without clearing the old events.",
+    "developer": "VETER",
+    "description": "VETER: Geometry Dash 2.2 tools for gameplay, practice, overlays, safer multi-slot GD Bot macro saving/loading with loop and playback rate, music pitch sync, editor transform helpers, custom menu music and local unlock checks. Some advanced Mega Hack bypasses are not implemented. GD Bot Continue replays a saved macro in Practice Mode and appends new recorded inputs without clearing the old events.",
     "tags": [
         "gameplay",
         "offline",
@@ -18,7 +18,7 @@
     "settings": {
         "noclip-enabled": {
             "name": "NoClip",
-            "description": "Toggle NoClip from the MegaSoft Pulse menu.",
+            "description": "Toggle NoClip from the VETER menu.",
             "type": "bool",
             "default": false
         },
@@ -214,4 +214,3 @@
         }
     }
 }
-
