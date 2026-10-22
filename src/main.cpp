@@ -609,7 +609,16 @@ namespace {
     bool g_injectedInput = false;
     // True from Continue start until the appended recording is saved or cancelled.
     bool g_botContinueSession = false;
+    // Event count in the saved macro before Continue appended its release boundary
+    // and new input events. Used to discard only an incomplete appended segment.
+    std::size_t g_botContinueOriginalEventCount = 0;
+    // Ownership of the in-memory event list. A slot switch must never silently
+    // play or save an older slot's buffer under the newly selected slot.
+    int g_macroSlotInMemory = 1;
     bool g_botContinueHandoffPending = false;
+    bool g_botPlaybackFinishPending = false;
+    bool g_botLoopRestartPending = false;
+    // Set when a handoff/retry/loop reset already established this frame's timestamp.
     bool g_botClockAdvancedThisFrame = false;
 
     bool saveMacro();
@@ -802,6 +811,8 @@ namespace {
         g_botMode = BotMode::Idle;
         g_botLayer = nullptr;
         g_botContinueHandoffPending = false;
+        g_botPlaybackFinishPending = false;
+        g_botLoopRestartPending = false;
         g_botClockAdvancedThisFrame = false;
 
         if (!showNotification || oldMode == BotMode::Idle) return;
@@ -836,6 +847,11 @@ namespace {
         if (g_botMode == BotMode::Recording) stopBot(false);
         if (g_events.empty()) {
             notify("GD Bot: nothing recorded yet");
+            return false;
+        }
+        if (g_macroSlotInMemory != botMacroSlot()) {
+            notify("GD Bot: active buffer belongs to slot " + std::to_string(g_macroSlotInMemory) +
+                "; load the selected slot or start a new recording before saving");
             return false;
         }
         if (g_events.size() > kMaxMacroEvents) {
@@ -895,6 +911,7 @@ namespace {
             notify("GD Bot: could not replace macro file; previous macro kept");
             return false;
         }
+        g_macroSlotInMemory = botMacroSlot();
         log::info("GD Bot: saved {} input events to slot {}", g_events.size(), botMacroSlot());
         notify("GD Bot: macro saved to slot " + std::to_string(botMacroSlot()));
         return true;
@@ -911,6 +928,7 @@ namespace {
             return false;
         }
         g_botContinueSession = false;
+        g_botContinueOriginalEventCount = 0;
         notify("GD Bot: Continue session saved; previous inputs were preserved");
         return true;
     }
@@ -961,6 +979,7 @@ namespace {
 
         g_events = std::move(loaded);
         g_macroLevelID = levelID;
+        g_macroSlotInMemory = botMacroSlot();
         g_botClock = 0.0;
         g_playIndex = 0;
         log::info("GD Bot: loaded {} input events", g_events.size());
@@ -999,18 +1018,29 @@ namespace {
                 return;
             }
 
-            // Always release held inputs before either stopping or beginning another loop.
-            releasePlaybackButtons();
-            if (botLoopEnabled() && !g_events.empty() && PlayLayer::get() == layer) {
-                g_botClock = 0.0;
-                g_playIndex = 0;
-                g_playbackHeldButtons.clear();
-                // Keep Playing mode and the same level association for the next pass.
-            } else {
-                g_botMode = BotMode::Idle;
-                g_botLayer = nullptr;
-                notify("GD Bot: playback finished");
-            }
+            // Defer the end-of-pass release/loop action until after the current
+            // PlayLayer update so a final press gets one complete physics tick.
+            g_botPlaybackFinishPending = true;
+            return;
+        }
+    }
+
+    void finishRegularPlayback(PlayLayer* layer) {
+        if (!g_botPlaybackFinishPending) return;
+        g_botPlaybackFinishPending = false;
+        if (g_botMode != BotMode::Playing || !layer || layer != g_botLayer ||
+            PlayLayer::get() != layer) {
+            return;
+        }
+
+        releasePlaybackButtons();
+        if (botLoopEnabled() && !g_events.empty() && layer->m_player1) {
+            // BOT LOOP begins a fresh attempt after the just-completed physics tick.
+            g_botLoopRestartPending = true;
+        } else {
+            g_botMode = BotMode::Idle;
+            g_botLayer = nullptr;
+            notify("GD Bot: playback finished");
         }
     }
 
@@ -1221,6 +1251,11 @@ public:
     }
 
     void onRecord(CCObject*) {
+        if (g_botMode != BotMode::Idle) {
+            notify("GD Bot: stop the current action before starting a new recording");
+            onClose(nullptr);
+            return;
+        }
         auto* layer = PlayLayer::get();
         if (!layer || !layer->m_player1) {
             notify("GD Bot: enter a level first");
@@ -1235,10 +1270,13 @@ public:
         }
         stopBot(false);
         g_events.clear();
+        g_macroSlotInMemory = botMacroSlot();
         g_playbackHeldButtons.clear();
         g_botClock = 0.0;
         g_playIndex = 0;
         g_botContinueHandoffPending = false;
+        g_botPlaybackFinishPending = false;
+        g_botLoopRestartPending = false;
         g_botClockAdvancedThisFrame = false;
         layer->resetLevel();
         g_macroLevelID = currentLevelID();
@@ -1258,6 +1296,11 @@ public:
     }
 
     void onPlay(CCObject*) {
+        if (g_botMode != BotMode::Idle) {
+            notify("GD Bot: stop the current action before starting playback");
+            onClose(nullptr);
+            return;
+        }
         auto* layer = PlayLayer::get();
         if (!layer || !layer->m_player1) {
             notify("GD Bot: enter the recorded level first");
@@ -1268,8 +1311,12 @@ public:
             onClose(nullptr);
             return;
         }
-        if (g_events.empty()) {
-            loadMacro();
+        if (g_events.empty() || g_macroSlotInMemory != botMacroSlot()) {
+            if (!loadMacro()) {
+                notify("GD Bot: no valid macro in the selected slot; old in-memory data was not played");
+                onClose(nullptr);
+                return;
+            }
         }
         if (g_events.empty()) {
             notify("GD Bot: record or load a macro first");
@@ -1287,6 +1334,8 @@ public:
         g_playIndex = 0;
         g_playbackHeldButtons.clear();
         g_botContinueHandoffPending = false;
+        g_botPlaybackFinishPending = false;
+        g_botLoopRestartPending = false;
         g_botClockAdvancedThisFrame = false;
         layer->resetLevel();
         g_botLayer = layer;
@@ -1341,10 +1390,13 @@ public:
         g_playIndex = 0;
         g_playbackHeldButtons.clear();
         g_botContinueHandoffPending = false;
+        g_botPlaybackFinishPending = false;
+        g_botLoopRestartPending = false;
         g_botClockAdvancedThisFrame = false;
         layer->resetLevelFromStart();
         g_botLayer = layer;
         g_botMode = BotMode::Continuing;
+        g_botContinueOriginalEventCount = g_events.size();
         g_botContinueSession = true;
         notify("GD Bot Continue: Practice ON; replaying saved inputs, then recording will append without deleting them");
         onClose(nullptr);
@@ -1358,6 +1410,11 @@ public:
         onClose(nullptr);
     }
     void onLoad(CCObject*) {
+        if (g_botMode != BotMode::Idle) {
+            notify("GD Bot: stop the current action before loading a macro");
+            onClose(nullptr);
+            return;
+        }
         if (g_botContinueSession && !finalizeContinueSession()) {
             onClose(nullptr);
             return;
@@ -1371,7 +1428,9 @@ public:
                            g_botMode == BotMode::Continuing ? "CONTINUE PLAYBACK" :
                            g_botMode == BotMode::Playing ? "PLAYING" : "IDLE";
         notify(std::string("GD Bot: ") + mode + " | events: " + std::to_string(g_events.size()) +
-            " | slot: " + std::to_string(botMacroSlot()) + (botLoopEnabled() ? " | loop: ON" : " | loop: OFF") +
+            " | slot: " + std::to_string(botMacroSlot()) +
+            " | buffer: " + std::to_string(g_macroSlotInMemory) +
+            (botLoopEnabled() ? " | loop: ON" : " | loop: OFF") +
             (g_botContinueSession ? " | append session: ON" : ""));
     }
 
@@ -1381,14 +1440,18 @@ public:
         notify(std::string("GD Bot loop ") + (botLoopEnabled() ? "ON" : "OFF"));
     }
     void onNextBotSlot(CCObject*) {
-        if (g_botContinueSession) {
-            notify("GD Bot: save/stop Continue before switching macro slots");
+        if (g_botMode != BotMode::Idle || g_botContinueSession) {
+            notify("GD Bot: stop/save the current bot action before switching macro slots");
             return;
         }
         const int nextSlot = botMacroSlot() >= 3 ? 1 : botMacroSlot() + 1;
         setBotMacroSlot(nextSlot);
         if (m_botSlotSprite) m_botSlotSprite->setString(("BOT SLOT " + std::to_string(nextSlot)).c_str());
-        notify("GD Bot: active save slot " + std::to_string(nextSlot));
+        if (g_macroSlotInMemory == nextSlot) {
+            notify("GD Bot: active slot " + std::to_string(nextSlot) + " (current buffer belongs to this slot)");
+        } else {
+            notify("GD Bot: active slot " + std::to_string(nextSlot) + "; use BOT LOAD or BOT PLAY to load its saved macro");
+        }
     }
     void onBotRateDown(CCObject*) {
         setBotPlaybackRate(botPlaybackRate() - 0.25f);
@@ -2410,6 +2473,28 @@ class $modify(MegaSoftPulsePlayLayer, PlayLayer) {
         PlayLayer::update(dt);
         const double safeFrameDelta = std::max(0.0, static_cast<double>(dt));
         finishContinuePlayback(this, safeFrameDelta);
+        finishRegularPlayback(this);
+
+        // Reset only after the current PlayLayer update has completed. This makes
+        // BOT LOOP replay the macro from the actual start rather than applying its
+        // first clicks to the prior run's end-state.
+        if (g_botLoopRestartPending) {
+            g_botLoopRestartPending = false;
+            if (g_botMode == BotMode::Playing && g_botLayer == this &&
+                PlayLayer::get() == this && m_player1) {
+                g_botClock = 0.0;
+                g_playIndex = 0;
+                g_playbackHeldButtons.clear();
+                g_botContinueHandoffPending = false;
+                g_botPlaybackFinishPending = false;
+                g_botClockAdvancedThisFrame = true;
+                this->resetLevel();
+            } else if (g_botMode == BotMode::Playing) {
+                stopBot(false);
+                notify("GD Bot loop stopped because the level ended or changed");
+            }
+        }
+
         updateTrajectoryTrail(this);
         updateClickIndicator(this, dt);
         updatePauseButtonVisibility(this);
@@ -2418,7 +2503,12 @@ class $modify(MegaSoftPulsePlayLayer, PlayLayer) {
             if (!g_botClockAdvancedThisFrame) g_botClock += safeFrameDelta;
             g_botClockAdvancedThisFrame = false;
         } else if (g_botMode == BotMode::Playing || g_botMode == BotMode::Continuing) {
-            g_botClock += safeFrameDelta * static_cast<double>(botPlaybackRate());
+            if (!g_botClockAdvancedThisFrame) {
+                g_botClock += safeFrameDelta * static_cast<double>(botPlaybackRate());
+            }
+            g_botClockAdvancedThisFrame = false;
+        } else {
+            g_botClockAdvancedThisFrame = false;
         }
         if (g_autoRetryPending) {
             g_autoRetryPending = false;
@@ -2438,9 +2528,40 @@ class $modify(MegaSoftPulsePlayLayer, PlayLayer) {
             notify("Noclip limit reached; normal death enabled");
         }
         if (primaryPlayer && (g_botMode == BotMode::Playing || g_botMode == BotMode::Continuing)) {
-            if (g_botContinueSession) finalizeContinueSession();
-            else stopBot(false);
-            notify("GD Bot: playback stopped after death");
+            if (autoRetryEnabled()) {
+                // Auto-Retry and GD Bot must restart together. Previously the bot
+                // stopped on death, so Auto-Retry reset the level with no macro running.
+                releasePlaybackButtons();
+                g_botClock = 0.0;
+                g_playIndex = 0;
+                g_playbackHeldButtons.clear();
+                g_botContinueHandoffPending = false;
+                g_botPlaybackFinishPending = false;
+                g_botLoopRestartPending = false;
+                // The reset triggered below is the start of a fresh timed attempt.
+                g_botClockAdvancedThisFrame = true;
+                notify("GD Bot: death detected; Auto-Retry will replay the macro from the start");
+            } else {
+                if (g_botContinueSession) finalizeContinueSession();
+                else stopBot(false);
+                notify("GD Bot: playback stopped after death (turn on Auto-Retry to retry the macro)");
+            }
+        } else if (primaryPlayer && g_botMode == BotMode::Recording) {
+            // GDBOT1 has no death/reset event. A normal recording is stopped at death.
+            // For Continue, discard the unfinishable appended tail and persist the exact
+            // original macro, so a later Continue can safely start from that endpoint.
+            if (g_botContinueSession) {
+                if (g_botContinueOriginalEventCount > 0 &&
+                    g_botContinueOriginalEventCount <= g_events.size()) {
+                    g_events.resize(g_botContinueOriginalEventCount);
+                }
+                if (finalizeContinueSession()) {
+                    notify("GD Bot Continue: died during appended recording; incomplete tail discarded, original macro preserved");
+                }
+            } else {
+                stopBot(false);
+                notify("GD Bot: recording stopped after death; partial macro remains in memory");
+            }
         }
         if (primaryPlayer && hitboxesOnDeathEnabled() && !hitboxesEnabled() && !g_noclipDeathDrawActive) {
             toggleDebugDraw();
@@ -2485,5 +2606,5 @@ $on_mod(Loaded) {
     applyFPSBypass();
     if (musicMuted()) applyMusicMute();
     applyMusicPitch();
-    log::info("MegaSoft Pulse v1.1.8 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
+    log::info("MegaSoft Pulse v1.2.0 loaded: gameplay, GD Bot, FPS/retry/hitboxes, overlays, custom menu music, editor nudge/rotate/scale tools, and local unlock checks");
 }
