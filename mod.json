@@ -1,14 +1,14 @@
 {
-  "geode": "5.11.2",
+  "geode": "5.7.1",
   "gd": {
     "android": "2.2081",
     "win": "2.2081"
   },
   "id": "dev.chatgpt.gdtools",
   "name": "MegaSoft Pulse",
-  "version": "v0.6.0",
+  "version": "v1.1.0",
   "developer": "MegaSoft Pulse",
-  "description": "MegaSoft Pulse: NoClip, adjustable Speedhack, music mute and speed sync, and GD Bot macro recording/playback.",
+  "description": "MegaSoft Pulse: Geometry Dash 2.2 tools for gameplay, practice, overlays, editor object nudging/rotation/scale, custom menu music and local unlock checks. Some advanced Mega Hack bypasses are not implemented.",
   "tags": [
     "gameplay",
     "offline",
@@ -21,6 +21,196 @@
       "description": "Toggle NoClip from the MegaSoft Pulse menu.",
       "type": "bool",
       "default": false
+    },
+    "fps-bypass-enabled": {
+      "name": "FPS Bypass",
+      "description": "Unlock the requested frame interval; hardware and display refresh rate may limit actual FPS.",
+      "type": "bool",
+      "default": false
+    },
+    "fps-target": {
+      "name": "FPS Target",
+      "description": "Target FPS used while FPS Bypass is enabled.",
+      "type": "int",
+      "default": 120,
+      "min": 60,
+      "max": 360
+    },
+    "auto-retry-enabled": {
+      "name": "Auto-Retry",
+      "description": "Restart the level after player death.",
+      "type": "bool",
+      "default": false
+    },
+    "hitboxes-enabled": {
+      "name": "Show Hitboxes",
+      "description": "Use the game built-in debug draw mode.",
+      "type": "bool",
+      "default": false
+    },
+    "cps-enabled": {
+      "name": "Show CPS",
+      "description": "Show an on-screen clicks-per-second counter.",
+      "type": "bool",
+      "default": false
+    },
+    "practice-music-enabled": {
+      "name": "Practice Music Hack",
+      "description": "Toggle the game built-in practice music behavior.",
+      "type": "bool",
+      "default": false
+    },
+    "noclip-limit-enabled": {
+      "name": "Noclip Limit",
+      "description": "Allow up to the configured number of ignored collisions before normal death is restored.",
+      "type": "bool",
+      "default": false
+    },
+    "noclip-max-deaths": {
+      "name": "Noclip Collision Limit",
+      "description": "Maximum ignored collisions before NoClip is disabled for this attempt (1–50).",
+      "type": "int",
+      "default": 5,
+      "min": 1,
+      "max": 50
+    },
+    "frame-step-enabled": {
+      "name": "Frame Step",
+      "description": "Freeze PlayLayer updates until Step +1 is pressed.",
+      "type": "bool",
+      "default": false
+    },
+    "no-death-effect-enabled": {
+      "name": "No Death Effect",
+      "description": "Suppress the player's death visual effect without preventing death.",
+      "type": "bool",
+      "default": false
+    },
+    "hitboxes-on-death-enabled": {
+      "name": "Show Hitboxes on Death",
+      "description": "Temporarily enable the game's debug hitbox draw after a player death.",
+      "type": "bool",
+      "default": false
+    },
+    "confirm-exit-enabled": {
+      "name": "Confirm Exit",
+      "description": "Ask before leaving a level from the pause menu.",
+      "type": "bool",
+      "default": false
+    },
+    "unlock-all-enabled": {
+      "name": "Unlock All Checks",
+      "description": "Override local item-unlocked checks; does not grant currency or server progress.",
+      "type": "bool",
+      "default": false
+    },
+    "shop-unlock-bypass-enabled": {
+      "name": "Shop Unlock Check",
+      "description": "Override the local shop-item unlocked status check; purchases may still require currency.",
+      "type": "bool",
+      "default": false
+    },
+    "vault-bypass-enabled": {
+      "name": "Vault Unlock Check",
+      "description": "Override local secret, gauntlet and special-chest unlocked status checks.",
+      "type": "bool",
+      "default": false
+    },
+    "layout-mode-enabled": {
+      "name": "Layout Mode",
+      "description": "Show a translucent 32-pixel reference grid during gameplay.",
+      "type": "bool",
+      "default": false
+    },
+    "icon-kit-bypass-enabled": {
+      "name": "Icon Kit Checks",
+      "description": "Override local icon unlock checks; does not write permanent save progress.",
+      "type": "bool",
+      "default": false
+    },
+    "main-levels-bypass-enabled": {
+      "name": "Main Levels Checks",
+      "description": "Override the local has-completed check for official main levels; this is not a server or save unlock.",
+      "type": "bool",
+      "default": false
+    },
+    "text-length-bypass-enabled": {
+      "name": "Text Length Bypass",
+      "description": "Raise CCTextInputNode max length for fields that use this API.",
+      "type": "bool",
+      "default": false
+    },
+    "trajectory-enabled": {
+      "name": "Position Trail",
+      "description": "Draw a short historical trail behind the player; this is not a future trajectory predictor.",
+      "type": "bool",
+      "default": false
+    },
+    "show-clicks-enabled": {
+      "name": "Show Clicks",
+      "description": "Briefly show a click marker near the player after input.",
+      "type": "bool",
+      "default": false
+    },
+    "custom-menu-music-enabled": {
+      "name": "Custom Menu Music",
+      "description": "Play custom-menu.mp3 from the mod save directory while in menus.",
+      "type": "bool",
+      "default": false
+    },
+    "transparent-pause-enabled": {
+      "name": "Transparent Pause",
+      "description": "Lower the opacity of the pause UI when it opens.",
+      "type": "bool",
+      "default": false
+    },
+    "hide-pause-button-enabled": {
+      "name": "Hide Pause Button",
+      "description": "Hide the visible in-level pause button after the mod finds it.",
+      "type": "bool",
+      "default": false
+    },
+    "editor-move-step": {
+      "name": "Editor Move Step",
+      "description": "Movement step used by the Editor tab (0.1, 1, or 10).",
+      "type": "float",
+      "default": 1.0,
+      "min": 0.1,
+      "max": 10.0
+    },
+    "editor-scale-step": {
+      "name": "Editor Scale Step",
+      "description": "Scale increment used in the Editor tab.",
+      "type": "float",
+      "default": 0.1,
+      "min": 0.01,
+      "max": 1.0
+    },
+    "speedhack-enabled": {
+      "name": "Speedhack",
+      "description": "Change game time scale while a level is active.",
+      "type": "bool",
+      "default": false
+    },
+    "speedhack-multiplier": {
+      "name": "Speedhack Multiplier",
+      "description": "Game time-scale multiplier (0.1–5.0).",
+      "type": "float",
+      "default": 1.0,
+      "min": 0.1,
+      "max": 5.0
+    },
+    "music-muted": {
+      "name": "Music Mute",
+      "description": "Pause or resume the game music.",
+      "type": "bool",
+      "default": false
+    },
+    "music-speed-sync": {
+      "name": "Music Speed Sync",
+      "description": "Match music channel pitch to the active Speedhack multiplier.",
+      "type": "bool",
+      "default": true
     }
   }
 }
