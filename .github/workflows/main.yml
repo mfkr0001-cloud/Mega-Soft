@@ -1,4 +1,4 @@
-name: Build MegaSoft Pulse Android
+name: Build VETER Android
 
 on:
   workflow_dispatch:
@@ -18,9 +18,9 @@ jobs:
       matrix:
         include:
           - target: Android64
-            artifact: MegaSoft-Pulse-Android64
+            artifact: VETER-Android64
           - target: Android32
-            artifact: MegaSoft-Pulse-Android32
+            artifact: VETER-Android32
 
     steps:
       - name: Checkout repository
