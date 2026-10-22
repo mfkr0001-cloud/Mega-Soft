@@ -1,4 +1,10 @@
 VETER v1.2.3 — исходники Geode-мода
+v1.2.5 reliability fixes
+GD Bot records button down/up at PlayerObject and saves partial recordings on stop/death/scene change.
+Recording appends a matching release event for any button still held at stop.
+Speedhack and music pitch are reapplied after reset and scene changes, and are not forcibly reset on level exit.
+Android FPS remains constrained by the system refresh rate and Geode/engine implementation.
+
 Цель сборки: Geometry Dash 2.2 / Geode SDK 5.11.2, Android32 и Android64 через GitHub Actions.
 > Это архив исходников, а не готовый `.geode`-файл. В этой среде нет установленного Geode SDK, поэтому компиляцию здесь подтвердить нельзя. Архив проверяется на целостность и корректность JSON; перед установкой обязательно проверь GitHub Actions.
 
