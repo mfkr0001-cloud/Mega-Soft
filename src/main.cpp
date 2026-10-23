@@ -1284,48 +1284,61 @@ private:
 
 protected:
     bool init() {
-        // Wider, compact layout inspired by modern category-based mod menus.
-        if (!Popup::init(420.f, 320.f)) return false;
+        // Responsive layout: size the popup to the available screen first, then
+        // derive every column/row from its actual content size. This prevents
+        // controls extending past the popup on smaller Android displays.
+        const auto screenSize = CCDirector::sharedDirector()->getWinSize();
+        const float popupWidth = std::max(260.f, std::min(420.f, screenSize.width - 24.f));
+        const float popupHeight = std::max(190.f, std::min(320.f, screenSize.height - 20.f));
+        if (!Popup::init(popupWidth, popupHeight)) return false;
         setTitle("VETER");
 
         if (!m_mainLayer) return false;
         const auto size = m_mainLayer->getContentSize();
+        const float railWidth = std::min(78.f, size.width * 0.19f);
+        const float contentLeft = railWidth + 20.f;
+        const float contentRight = size.width - 9.f;
+        const float contentWidth = std::max(120.f, contentRight - contentLeft);
+        const float cellWidth = contentWidth / 3.f;
+        const float cardWidth = std::clamp(cellWidth - 8.f, 62.f, 88.f);
+        const float cardHeight = std::clamp(size.height * 0.082f, 20.f, 26.f);
 
-        // Base and content panels.
+        // Base and content panels follow the responsive columns and height.
         auto* darkPanel = CCLayerColor::create(ccc4(20, 27, 41, 252), size.width, size.height);
         if (darkPanel) m_mainLayer->addChild(darkPanel, -5);
-        auto* contentPanel = CCLayerColor::create(ccc4(13, 18, 31, 246), size.width - 104.f, size.height - 44.f);
+        auto* contentPanel = CCLayerColor::create(
+            ccc4(13, 18, 31, 246), std::max(100.f, size.width - contentLeft - 8.f), size.height - 20.f);
         if (contentPanel) {
-            contentPanel->setPosition({96.f, 8.f});
+            contentPanel->setPosition({contentLeft - 4.f, 8.f});
             m_mainLayer->addChild(contentPanel, -4);
         }
-        auto* sidePanel = CCLayerColor::create(ccc4(10, 15, 27, 250), 78.f, size.height - 44.f);
+        auto* sidePanel = CCLayerColor::create(ccc4(10, 15, 27, 250), railWidth, size.height - 20.f);
         if (sidePanel) {
             sidePanel->setPosition({8.f, 8.f});
             m_mainLayer->addChild(sidePanel, -4);
         }
-        auto* divider = CCLayerColor::create(ccc4(34, 183, 207, 255), 2.f, size.height - 48.f);
+        auto* divider = CCLayerColor::create(ccc4(34, 183, 207, 255), 2.f, size.height - 28.f);
         if (divider) {
-            divider->setPosition({89.f, 10.f});
+            divider->setPosition({contentLeft - 8.f, 10.f});
             m_mainLayer->addChild(divider, -3);
         }
-        auto* accent = CCLayerColor::create(ccc4(38, 211, 228, 255), size.width - 108.f, 2.f);
+        auto* accent = CCLayerColor::create(ccc4(38, 211, 228, 255), std::max(100.f, size.width - contentLeft - 16.f), 2.f);
         if (accent) {
-            accent->setPosition({99.f, size.height - 38.f});
+            accent->setPosition({contentLeft, size.height - 35.f});
             m_mainLayer->addChild(accent, -3);
         }
-        auto* lowerAccent = CCLayerColor::create(ccc4(24, 45, 62, 255), size.width - 108.f, 1.f);
+        auto* lowerAccent = CCLayerColor::create(ccc4(24, 45, 62, 255), std::max(100.f, size.width - contentLeft - 16.f), 1.f);
         if (lowerAccent) {
-            lowerAccent->setPosition({99.f, 13.f});
+            lowerAccent->setPosition({contentLeft, 12.f});
             m_mainLayer->addChild(lowerAccent, -3);
         }
 
         m_sectionLabel = CCLabelBMFont::create("PLAYER CONTROL", "bigFont.fnt");
         if (m_sectionLabel) {
-            m_sectionLabel->setScale(0.30f);
+            m_sectionLabel->setScale(std::min(0.30f, contentWidth / std::max(1.f, m_sectionLabel->getContentSize().width)));
             m_sectionLabel->setColor(ccc3(91, 227, 240));
             m_sectionLabel->setAnchorPoint({0.5f, 0.5f});
-            m_sectionLabel->setPosition({257.f, size.height - 57.f});
+            m_sectionLabel->setPosition({contentLeft + contentWidth * 0.5f, size.height - 46.f});
             m_mainLayer->addChild(m_sectionLabel, 4);
         }
 
@@ -1347,8 +1360,6 @@ protected:
                              float x, float y, const char* frame, float fontScale = 0.27f) -> CCLabelBMFont* {
             if (!menu) return nullptr;
             (void)frame; // Retained in the call signature so existing feature definitions stay readable.
-            constexpr float cardWidth = 88.f;
-            constexpr float cardHeight = 26.f;
             auto* card = CCLayerColor::create(ccc4(20, 27, 41, 252), cardWidth, cardHeight);
             if (!card) return nullptr;
             card->setAnchorPoint({0.5f, 0.5f});
@@ -1366,7 +1377,7 @@ protected:
             auto* label = CCLabelBMFont::create(text.c_str(), "bigFont.fnt");
             if (!label) return nullptr;
             const float naturalWidth = label->getContentSize().width;
-            const float fittedScale = naturalWidth > 0.f ? std::min(fontScale, 80.f / naturalWidth) : fontScale;
+            const float fittedScale = naturalWidth > 0.f ? std::min(fontScale, (cardWidth - 8.f) / naturalWidth) : fontScale;
             label->setScale(fittedScale);
             label->setColor(ccc3(222, 235, 247));
             label->setAnchorPoint({0.5f, 0.5f});
@@ -1385,8 +1396,8 @@ protected:
         nav->setPosition({0.f, 0.f});
         m_mainLayer->addChild(nav, 5);
         auto tabButton = [&](int idx, const char* label, SEL_MenuHandler selector, float y) {
-            constexpr float tabWidth = 74.f;
-            constexpr float tabHeight = 30.f;
+            const float tabWidth = std::max(52.f, railWidth - 5.f);
+            const float tabHeight = std::clamp(size.height * 0.094f, 22.f, 30.f);
             auto* card = CCLayerColor::create(ccc4(19, 26, 40, 225), tabWidth, tabHeight);
             if (!card) return;
             card->setAnchorPoint({0.5f, 0.5f});
@@ -1399,7 +1410,7 @@ protected:
             if (!textLabel) return;
             float scale = 0.20f;
             if (textLabel->getContentSize().width > 0.f)
-                scale = std::min(scale, 66.f / textLabel->getContentSize().width);
+                scale = std::min(scale, (tabWidth - 8.f) / textLabel->getContentSize().width);
             textLabel->setScale(scale);
             textLabel->setColor(ccc3(204, 216, 232));
             textLabel->setAnchorPoint({0.5f, 0.5f});
@@ -1407,21 +1418,23 @@ protected:
             card->addChild(textLabel, 2);
             auto* item = CCMenuItemSpriteExtra::create(card, this, selector);
             if (!item) return;
-            item->setPosition({46.f, y});
+            item->setPosition({8.f + railWidth * 0.5f, y});
             nav->addChild(item);
             m_tabCards[idx] = card;
             m_tabSprites[idx] = textLabel;
         };
-        tabButton(0, "PLAYER", menu_selector(VETERPopup::onTabPlayer), size.height - 68.f);
-        tabButton(1, "GD BOT", menu_selector(VETERPopup::onTabBot), size.height - 112.f);
-        tabButton(2, "VISUALS", menu_selector(VETERPopup::onTabVisuals), size.height - 156.f);
-        tabButton(3, "SETTINGS", menu_selector(VETERPopup::onTabSettings), size.height - 200.f);
+        const float tabTop = size.height - (size.height < 260.f ? 48.f : 68.f);
+        const float tabGap = std::min(44.f, std::max(28.f, (size.height - 94.f) / 3.f));
+        tabButton(0, "PLAYER", menu_selector(VETERPopup::onTabPlayer), tabTop);
+        tabButton(1, "GD BOT", menu_selector(VETERPopup::onTabBot), tabTop - tabGap);
+        tabButton(2, "VISUALS", menu_selector(VETERPopup::onTabVisuals), tabTop - tabGap * 2.f);
+        tabButton(3, "SETTINGS", menu_selector(VETERPopup::onTabSettings), tabTop - tabGap * 3.f);
 
-        // Main controls are aligned to the right of the category rail.
-        const float left = 148.f;
-        const float center = 252.f;
-        const float right = 356.f;
-        const float top = size.height - 91.f;
+        // Dynamic three-column layout keeps every card inside the content panel.
+        const float left = contentLeft + cellWidth * 0.5f;
+        const float center = contentLeft + cellWidth * 1.5f;
+        const float right = contentLeft + cellWidth * 2.5f;
+        const float top = size.height - (size.height < 260.f ? 70.f : 91.f);
 
         // PLAYER tab: gameplay switches and speed controls.
         auto* player = makeMenu(0);
@@ -1440,7 +1453,7 @@ protected:
 
         // GD BOT tab: recording, replay, saving and macro-rate controls.
         auto* bot = makeMenu(1);
-        const float botGap = 39.f;
+        const float botGap = std::min(39.f, std::max(25.f, (size.height - 105.f) / 4.f));
         auto botRow = [&](int i) { return top - 2.f - botGap * static_cast<float>(i); };
         addButton(bot, "REC", menu_selector(VETERPopup::onRecord), left, botRow(0), "GJ_button_01.png");
         addButton(bot, "STOP", menu_selector(VETERPopup::onStopBot), center, botRow(0), "GJ_button_04.png");
@@ -1459,7 +1472,7 @@ protected:
 
         // VISUALS tab.
         auto* visuals = makeMenu(2);
-        const float visualGap = 43.f;
+        const float visualGap = std::min(43.f, std::max(30.f, (size.height - 95.f) / 3.f));
         auto visualRow = [&](int i) { return top - 1.f - visualGap * static_cast<float>(i); };
         m_trajectorySprite = addButton(visuals, trajectoryEnabled() ? "TRAIL ON" : "TRAIL OFF",
             menu_selector(VETERPopup::onToggleTrajectory), left, visualRow(0), trajectoryEnabled() ? "GJ_button_02.png" : "GJ_button_04.png");
@@ -1479,8 +1492,8 @@ protected:
 
         // SETTINGS tab: compact rows; all original actions are retained.
         auto* settings = makeMenu(3);
-        const float setTop = size.height - 80.f;
-        const float setGap = 25.f;
+        const float setTop = size.height - (size.height < 260.f ? 48.f : 80.f);
+        const float setGap = std::min(25.f, std::max(16.f, (size.height - 94.f) / 6.f));
         auto setRow = [&](int i) { return setTop - setGap * static_cast<float>(i); };
         const float small = 0.215f;
         m_fpsEnabledSprite = addButton(settings, fpsBypassEnabled() ? "FPS ON" : "FPS OFF", menu_selector(VETERPopup::onSetFPS), left, setRow(0), fpsBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
@@ -2570,10 +2583,33 @@ void VETERToolsPopup::onVisuals(CCObject*) {
     if (auto* popup = VETERVisualsPopup::create()) popup->show();
 }
 
-class VETEROpenDelegate : public CCNode {
+class VETERDraggableLauncher : public CCLayer {
+private:
+    CCLayerColor* m_buttonVisual = nullptr;
+    CCPoint m_touchStart = CCPointZero;
+    CCPoint m_buttonStart = CCPointZero;
+    bool m_touchActive = false;
+    bool m_dragged = false;
+
+    CCPoint clampButtonPosition(const CCPoint& desired) const {
+        const auto screen = CCDirector::sharedDirector()->getWinSize();
+        constexpr float half = 23.f;
+        return {
+            std::clamp(desired.x, half, std::max(half, screen.width - half)),
+            std::clamp(desired.y, half, std::max(half, screen.height - half))
+        };
+    }
+
+    void saveButtonPosition() {
+        if (!m_buttonVisual) return;
+        const auto p = m_buttonVisual->getPosition();
+        Mod::get()->setSavedValue("launcher-x", p.x);
+        Mod::get()->setSavedValue("launcher-y", p.y);
+    }
+
 public:
-    static VETEROpenDelegate* create() {
-        auto* node = new VETEROpenDelegate();
+    static VETERDraggableLauncher* create() {
+        auto* node = new VETERDraggableLauncher();
         if (node && node->init()) {
             node->autorelease();
             return node;
@@ -2582,55 +2618,107 @@ public:
         return nullptr;
     }
 
-    void onOpen(CCObject*) {
+    bool init() override {
+        if (!CCLayer::init()) return false;
+        const auto screen = CCDirector::sharedDirector()->getWinSize();
+        setContentSize(screen);
+        setAnchorPoint({0.f, 0.f});
+        setPosition({0.f, 0.f});
+        setTouchEnabled(true);
+        setTouchMode(kCCTouchesOneByOne);
+
+        m_buttonVisual = CCLayerColor::create(ccc4(20, 27, 41, 252), 46.f, 46.f);
+        if (!m_buttonVisual) return false;
+        m_buttonVisual->setAnchorPoint({0.5f, 0.5f});
+        auto* stripe = CCLayerColor::create(ccc4(38, 211, 228, 255), 2.f, 46.f);
+        if (stripe) m_buttonVisual->addChild(stripe, 1);
+
+        // Geode's mod resources are not in Geometry Dash's global sprite path.
+        // Load the extracted resource by its absolute path to avoid the pink/black
+        // missing-texture checkerboard on Android.
+        const auto iconPath = (Mod::get()->getResourcesDir() / "veter-button.png").string();
+        std::error_code resourceError;
+        bool iconLoaded = false;
+        if (std::filesystem::exists(iconPath, resourceError) && !resourceError) {
+            auto* icon = CCSprite::create(iconPath.c_str());
+            if (icon) {
+                icon->setPosition({23.f, 23.f});
+                const auto iconSize = icon->getContentSize();
+                if (iconSize.width > 0.f && iconSize.height > 0.f) {
+                    icon->setScale(std::min(32.f / iconSize.width, 32.f / iconSize.height));
+                }
+                m_buttonVisual->addChild(icon, 2);
+                iconLoaded = true;
+            }
+        }
+        if (!iconLoaded) {
+            auto* fallback = CCLabelBMFont::create("V", "bigFont.fnt");
+            if (fallback) {
+                fallback->setScale(0.7f);
+                fallback->setPosition({23.f, 23.f});
+                fallback->setColor(ccc3(90, 242, 248));
+                m_buttonVisual->addChild(fallback, 2);
+            }
+        }
+        addChild(m_buttonVisual, 2);
+
+        const float defaultX = screen.width - 34.f;
+        const float defaultY = screen.height - 34.f;
+        const float savedX = Mod::get()->getSavedValue<float>("launcher-x", defaultX);
+        const float savedY = Mod::get()->getSavedValue<float>("launcher-y", defaultY);
+        m_buttonVisual->setPosition(clampButtonPosition({savedX, savedY}));
+        return true;
+    }
+
+    void registerWithTouchDispatcher() override {
+        CCDirector::sharedDirector()->getTouchDispatcher()->addTargetedDelegate(this, -128, true);
+    }
+
+    bool ccTouchBegan(CCTouch* touch, CCEvent*) override {
+        if (!m_buttonVisual || !isVisible()) return false;
+        const auto point = convertToNodeSpace(touch->getLocation());
+        if (!m_buttonVisual->boundingBox().containsPoint(point)) return false;
+        m_touchActive = true;
+        m_dragged = false;
+        m_touchStart = point;
+        m_buttonStart = m_buttonVisual->getPosition();
+        return true;
+    }
+
+    void ccTouchMoved(CCTouch* touch, CCEvent*) override {
+        if (!m_touchActive || !m_buttonVisual) return;
+        const auto point = convertToNodeSpace(touch->getLocation());
+        const float dx = point.x - m_touchStart.x;
+        const float dy = point.y - m_touchStart.y;
+        if (!m_dragged && dx * dx + dy * dy >= 64.f) m_dragged = true;
+        if (m_dragged) {
+            m_buttonVisual->setPosition(clampButtonPosition({m_buttonStart.x + dx, m_buttonStart.y + dy}));
+        }
+    }
+
+    void ccTouchEnded(CCTouch*, CCEvent*) override {
+        if (!m_touchActive) return;
+        m_touchActive = false;
+        if (m_dragged) {
+            saveButtonPosition();
+            return;
+        }
         if (auto* popup = VETERPopup::create()) popup->show();
+    }
+
+    void ccTouchCancelled(CCTouch*, CCEvent*) override {
+        m_touchActive = false;
+        m_dragged = false;
     }
 };
 
 namespace {
     void attachVETERButton(CCNode* scene) {
         if (!scene || scene->getChildByTag(kVETERButtonTag)) return;
-
-        auto* menu = CCMenu::create();
-        auto* delegate = VETEROpenDelegate::create();
-        // Compact image-only launcher button. The square background matches
-        // the flat feature cards used inside the VETER popup.
-        auto* buttonVisual = CCLayerColor::create(ccc4(20, 27, 41, 252), 46.f, 46.f);
-        if (!menu || !delegate || !buttonVisual) return;
-        auto* stripe = CCLayerColor::create(ccc4(38, 211, 228, 255), 2.f, 46.f);
-        if (stripe) buttonVisual->addChild(stripe, 1);
-        auto* icon = CCSprite::create("veter-button.png");
-        if (icon) {
-            icon->setPosition({23.f, 23.f});
-            const auto iconSize = icon->getContentSize();
-            if (iconSize.width > 0.f && iconSize.height > 0.f) {
-                icon->setScale(std::min(36.f / iconSize.width, 36.f / iconSize.height));
-            }
-            buttonVisual->addChild(icon, 2);
-        } else {
-            // Visible fallback if a resource fails to load.
-            auto* fallback = CCLabelBMFont::create("V", "bigFont.fnt");
-            if (fallback) {
-                fallback->setScale(0.65f);
-                fallback->setPosition({23.f, 23.f});
-                fallback->setColor(ccc3(90, 242, 248));
-                buttonVisual->addChild(fallback, 2);
-            }
-        }
-
-        auto* item = CCMenuItemSpriteExtra::create(
-            buttonVisual, delegate, menu_selector(VETEROpenDelegate::onOpen)
-        );
-        if (!item) return;
-
-        const auto size = CCDirector::sharedDirector()->getWinSize();
-        menu->setTag(kVETERButtonTag);
-        menu->setPosition({0.f, 0.f});
-        item->setPosition({size.width - 34.f, size.height - 34.f});
-        item->setScale(0.88f);
-        menu->addChild(delegate);
-        menu->addChild(item);
-        scene->addChild(menu, 9999);
+        auto* launcher = VETERDraggableLauncher::create();
+        if (!launcher) return;
+        launcher->setTag(kVETERButtonTag);
+        scene->addChild(launcher, 9999);
     }
 }
 
@@ -2968,5 +3056,5 @@ $on_mod(Loaded) {
     applySpeedhack();
     if (musicMuted()) applyMusicMute();
     applyMusicPitch();
-    log::info("VETER v1.2.7 loaded: compact QOL-style UI, image launcher, PlayerObject input recording, autosave, persistent Speedhack/audio sync, FPS and visual tools");
+    log::info("VETER v1.2.8 loaded: responsive QOL-style UI, draggable image launcher, PlayerObject input recording, autosave, persistent Speedhack/audio sync, FPS and visual tools");
 }
