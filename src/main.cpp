@@ -29,6 +29,42 @@ namespace {
     constexpr std::size_t kMaxMacroEvents = 500000;
     constexpr double kMaxMacroDurationSeconds = 24.0 * 60.0 * 60.0;
 
+    // User-adjustable UI preferences. They are saved across launches.
+    float uiButtonScale() {
+        return std::clamp(Mod::get()->getSavedValue<float>("ui-button-scale", 1.0f), 0.70f, 1.0f);
+    }
+    void setUIButtonScale(float value) {
+        Mod::get()->setSavedValue("ui-button-scale", std::clamp(value, 0.70f, 1.0f));
+    }
+    float uiMenuScale() {
+        return std::clamp(Mod::get()->getSavedValue<float>("ui-menu-scale", 1.0f), 0.75f, 1.0f);
+    }
+    void setUIMenuScale(float value) {
+        Mod::get()->setSavedValue("ui-menu-scale", std::clamp(value, 0.75f, 1.0f));
+    }
+    int uiButtonOpacity() {
+        return std::clamp(Mod::get()->getSavedValue<int>("ui-button-opacity", 100), 50, 100);
+    }
+    void setUIButtonOpacity(int value) {
+        Mod::get()->setSavedValue("ui-button-opacity", std::clamp(value, 50, 100));
+    }
+    int percent(float value) {
+        return static_cast<int>(std::lround(value * 100.f));
+    }
+    float nextScale(float current, const std::vector<float>& values) {
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            if (std::fabs(current - values[i]) < 0.025f) return values[(i + 1) % values.size()];
+        }
+        return values.front();
+    }
+    int nextOpacity(int current) {
+        constexpr int values[] = {50, 65, 80, 90, 100};
+        for (std::size_t i = 0; i < std::size(values); ++i) {
+            if (current == values[i]) return values[(i + 1) % std::size(values)];
+        }
+        return 50;
+    }
+
     bool autoRetryEnabled() {
         return Mod::get()->getSavedValue<bool>("auto-retry-enabled", false);
     }
@@ -1193,6 +1229,9 @@ private:
     CCLabelBMFont* m_hitboxesOnDeathSprite = nullptr;
     CCLabelBMFont* m_confirmExitSprite = nullptr;
     CCLabelBMFont* m_layoutModeSprite = nullptr;
+    CCLabelBMFont* m_buttonSizeOptionSprite = nullptr;
+    CCLabelBMFont* m_menuSizeOptionSprite = nullptr;
+    CCLabelBMFont* m_buttonOpacityOptionSprite = nullptr;
 
     CCLabelBMFont* m_trajectorySprite = nullptr;
     CCLabelBMFont* m_predictionSprite = nullptr;
@@ -1213,7 +1252,8 @@ private:
             }
             if (m_tabCards[i]) {
                 m_tabCards[i]->setColor(active ? ccc3(13, 65, 94) : ccc3(10, 22, 48));
-                m_tabCards[i]->setOpacity(active ? 255 : 215);
+                const int activeOpacity = active ? 100 : 84;
+                m_tabCards[i]->setOpacity(static_cast<GLubyte>((activeOpacity * uiButtonOpacity()) / 100));
             }
         }
         if (m_sectionLabel) {
@@ -1223,6 +1263,7 @@ private:
 
     void selectTab(int tab) {
         m_activeTab = std::clamp(tab, 0, 3);
+        Mod::get()->setSavedValue("ui-last-tab", m_activeTab);
         for (int i = 0; i < 4; ++i) {
             const bool active = i == m_activeTab;
             if (m_pages[i]) m_pages[i]->setVisible(active);
@@ -1251,6 +1292,18 @@ private:
         if (m_hitboxesOnDeathSprite) m_hitboxesOnDeathSprite->setString(hitboxesOnDeathEnabled() ? "DEATH BOX ON" : "DEATH BOX OFF");
         if (m_confirmExitSprite) m_confirmExitSprite->setString(confirmExitEnabled() ? "EXIT CONFIRM ON" : "EXIT CONFIRM OFF");
         if (m_layoutModeSprite) m_layoutModeSprite->setString(layoutModeEnabled() ? "GRID ON" : "GRID OFF");
+        if (m_buttonSizeOptionSprite) {
+            const auto label = "BTN " + std::to_string(percent(uiButtonScale())) + "%";
+            m_buttonSizeOptionSprite->setString(label.c_str());
+        }
+        if (m_menuSizeOptionSprite) {
+            const auto label = "MENU " + std::to_string(percent(uiMenuScale())) + "%";
+            m_menuSizeOptionSprite->setString(label.c_str());
+        }
+        if (m_buttonOpacityOptionSprite) {
+            const auto label = "ALPHA " + std::to_string(uiButtonOpacity()) + "%";
+            m_buttonOpacityOptionSprite->setString(label.c_str());
+        }
     }
 
     void refreshVisualLabels() {
@@ -1288,8 +1341,11 @@ protected:
         // derive every column/row from its actual content size. This prevents
         // controls extending past the popup on smaller Android displays.
         const auto screenSize = CCDirector::sharedDirector()->getWinSize();
-        const float popupWidth = std::max(220.f, std::min(420.f, screenSize.width - 24.f));
-        const float popupHeight = std::max(180.f, std::min(320.f, screenSize.height - 20.f));
+        const float menuScale = uiMenuScale();
+        const float availableWidth = std::max(220.f, std::min(420.f, screenSize.width - 24.f));
+        const float availableHeight = std::max(180.f, std::min(320.f, screenSize.height - 20.f));
+        const float popupWidth = std::max(220.f, availableWidth * menuScale);
+        const float popupHeight = std::max(180.f, availableHeight * menuScale);
         if (!Popup::init(popupWidth, popupHeight)) return false;
 
         // Recolor the actual stock Popup background as well as the content: the
@@ -1306,11 +1362,15 @@ protected:
         const float railWidth = std::clamp(size.width * 0.17f, 45.f, 70.f);
         // Narrow the left rail and reduce the gutter to shift all content left.
         const float contentLeft = railWidth + 14.f;
-        const float contentRight = size.width - 12.f;
+        const float contentRight = size.width - 42.f; // Extra right safe margin for actual rendered button scale.
         const float contentWidth = std::max(64.f, contentRight - contentLeft);
         const float cellWidth = contentWidth / 3.f;
-        const float cardWidth = std::max(30.f, std::min(86.f, cellWidth - 6.f));
-        const float cardHeight = std::clamp(size.height * 0.075f, 16.f, 24.f);
+        const float buttonScale = uiButtonScale();
+        // Compute the base width with the scale included, so the rendered button
+        // never occupies more than its own column even at 100% or on narrow screens.
+        const float cardWidth = std::max(22.f, std::min(72.f, (cellWidth - 24.f) / buttonScale));
+        const float cardHeight = std::clamp(size.height * 0.06f, 12.f, 18.f);
+        const GLubyte buttonAlpha = static_cast<GLubyte>((uiButtonOpacity() * 255) / 100);
 
         // Use opaque blue-toned panels so the brown stock texture cannot shine through.
         auto* darkPanel = CCLayerColor::create(ccc4(8, 17, 42, 255), size.width, size.height);
@@ -1372,6 +1432,8 @@ protected:
             auto* card = CCLayerColor::create(ccc4(13, 27, 57, 255), cardWidth, cardHeight);
             if (!card) return nullptr;
             card->setAnchorPoint({0.5f, 0.5f});
+            card->setCascadeOpacityEnabled(true);
+            card->setOpacity(buttonAlpha);
 
             auto* stripe = CCLayerColor::create(ccc4(38, 211, 228, 255), 2.f, cardHeight);
             if (stripe) {
@@ -1385,9 +1447,11 @@ protected:
             }
             auto* label = CCLabelBMFont::create(text.c_str(), "bigFont.fnt");
             if (!label) return nullptr;
-            const float naturalWidth = label->getContentSize().width;
-            const float fittedScale = naturalWidth > 0.f ? std::min(fontScale, (cardWidth - 8.f) / naturalWidth) : fontScale;
-            label->setScale(fittedScale);
+            const auto labelSize = label->getContentSize();
+            const float fittedWidth = labelSize.width > 0.f ? (cardWidth - 8.f) / labelSize.width : fontScale;
+            const float fittedHeight = labelSize.height > 0.f ? (cardHeight - 3.f) / labelSize.height : fontScale;
+            const float fittedScale = std::min({fontScale, fittedWidth, fittedHeight});
+            label->setScale(std::max(0.08f, fittedScale));
             label->setColor(ccc3(222, 235, 247));
             label->setAnchorPoint({0.5f, 0.5f});
             label->setPosition({cardWidth * 0.52f, cardHeight * 0.52f});
@@ -1395,6 +1459,7 @@ protected:
 
             auto* item = CCMenuItemSpriteExtra::create(card, this, selector);
             if (!item) return nullptr;
+            item->setScale(buttonScale);
             item->setPosition({x, y});
             menu->addChild(item);
             return label;
@@ -1405,11 +1470,13 @@ protected:
         nav->setPosition({0.f, 0.f});
         m_mainLayer->addChild(nav, 5);
         auto tabButton = [&](int idx, const char* label, SEL_MenuHandler selector, float y) {
-            const float tabWidth = std::max(38.f, railWidth - 10.f);
-            const float tabHeight = std::clamp(size.height * 0.085f, 18.f, 27.f);
+            const float tabWidth = std::max(28.f, (railWidth - 10.f) / buttonScale);
+            const float tabHeight = std::clamp(size.height * 0.075f, 15.f, 24.f);
             auto* card = CCLayerColor::create(ccc4(10, 22, 48, 255), tabWidth, tabHeight);
             if (!card) return;
             card->setAnchorPoint({0.5f, 0.5f});
+            card->setCascadeOpacityEnabled(true);
+            card->setOpacity(buttonAlpha);
             auto* stripe = CCLayerColor::create(ccc4(38, 211, 228, 255), 2.f, tabHeight);
             if (stripe) {
                 stripe->setPosition({0.f, 0.f});
@@ -1427,22 +1494,23 @@ protected:
             card->addChild(textLabel, 2);
             auto* item = CCMenuItemSpriteExtra::create(card, this, selector);
             if (!item) return;
-            item->setPosition({4.f + railWidth * 0.5f, y});
+            item->setScale(buttonScale);
+            item->setPosition({railWidth * 0.5f, y});
             nav->addChild(item);
             m_tabCards[idx] = card;
             m_tabSprites[idx] = textLabel;
         };
-        const float tabTop = size.height - (size.height < 260.f ? 45.f : 64.f);
-        const float tabGap = std::min(44.f, std::max(28.f, (size.height - 94.f) / 3.f));
+        const float tabTop = size.height - (size.height < 260.f ? 42.f : 60.f);
+        const float tabGap = std::clamp((size.height - 82.f) / 3.f, 27.f, 42.f);
         tabButton(0, "PLAYER", menu_selector(VETERPopup::onTabPlayer), tabTop);
         tabButton(1, "GD BOT", menu_selector(VETERPopup::onTabBot), tabTop - tabGap);
         tabButton(2, "VISUALS", menu_selector(VETERPopup::onTabVisuals), tabTop - tabGap * 2.f);
         tabButton(3, "SETTINGS", menu_selector(VETERPopup::onTabSettings), tabTop - tabGap * 3.f);
 
         // Dynamic three-column layout keeps every card inside the content panel.
-        const float left = contentLeft + cellWidth * 0.5f;
-        const float center = contentLeft + cellWidth * 1.5f;
-        const float right = contentLeft + cellWidth * 2.5f;
+        const float left = contentLeft + cellWidth * 0.44f;
+        const float center = contentLeft + cellWidth * 1.42f;
+        const float right = contentLeft + cellWidth * 2.38f;
         const float top = size.height - (size.height < 260.f ? 70.f : 91.f);
 
         // PLAYER tab: gameplay switches and speed controls.
@@ -1501,8 +1569,10 @@ protected:
 
         // SETTINGS tab: compact rows; all original actions are retained.
         auto* settings = makeMenu(3);
-        const float setTop = size.height - (size.height < 260.f ? 48.f : 80.f);
-        const float setGap = std::min(25.f, std::max(16.f, (size.height - 94.f) / 6.f));
+        const float setTop = size.height - (size.height < 260.f ? 42.f : 75.f);
+        // Eight compact rows (including the three UI controls) with consistent
+        // vertical bounds avoid the former last-row overflow on mobile.
+        const float setGap = std::clamp((setTop - 27.f) / 7.f, 12.f, 22.f);
         auto setRow = [&](int i) { return setTop - setGap * static_cast<float>(i); };
         const float small = 0.215f;
         m_fpsEnabledSprite = addButton(settings, fpsBypassEnabled() ? "FPS ON" : "FPS OFF", menu_selector(VETERPopup::onSetFPS), left, setRow(0), fpsBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
@@ -1526,8 +1596,17 @@ protected:
         addButton(settings, "EDITOR", menu_selector(VETERPopup::onOpenEditor), left, setRow(6), "GJ_button_01.png", small);
         addButton(settings, "UNLOCKS", menu_selector(VETERPopup::onOpenUnlocks), center, setRow(6), "GJ_button_01.png", small);
         addButton(settings, "FAST RESET", menu_selector(VETERPopup::onFastReset), right, setRow(6), "GJ_button_01.png", small);
+        m_buttonSizeOptionSprite = addButton(
+            "BTN " + std::to_string(percent(uiButtonScale())) + "%",
+            menu_selector(VETERPopup::onCycleButtonSize), left, setRow(7), "GJ_button_02.png", 0.20f);
+        m_menuSizeOptionSprite = addButton(
+            "MENU " + std::to_string(percent(uiMenuScale())) + "%",
+            menu_selector(VETERPopup::onCycleMenuSize), center, setRow(7), "GJ_button_02.png", 0.20f);
+        m_buttonOpacityOptionSprite = addButton(
+            "ALPHA " + std::to_string(uiButtonOpacity()) + "%",
+            menu_selector(VETERPopup::onCycleButtonOpacity), right, setRow(7), "GJ_button_02.png", 0.19f);
 
-        selectTab(0);
+        selectTab(std::clamp(Mod::get()->getSavedValue<int>("ui-last-tab", 0), 0, 3));
         refreshSettingsLabels();
         refreshVisualLabels();
         return true;
@@ -1549,6 +1628,22 @@ public:
     void onTabBot(CCObject*) { selectTab(1); }
     void onTabVisuals(CCObject*) { selectTab(2); }
     void onTabSettings(CCObject*) { selectTab(3); }
+
+    void onCycleButtonSize(CCObject*) {
+        setUIButtonScale(nextScale(uiButtonScale(), {0.70f, 0.80f, 0.90f, 1.00f}));
+        onClose(nullptr);
+        if (auto* popup = VETERPopup::create()) popup->show();
+    }
+    void onCycleMenuSize(CCObject*) {
+        setUIMenuScale(nextScale(uiMenuScale(), {0.75f, 0.85f, 0.95f, 1.00f}));
+        onClose(nullptr);
+        if (auto* popup = VETERPopup::create()) popup->show();
+    }
+    void onCycleButtonOpacity(CCObject*) {
+        setUIButtonOpacity(nextOpacity(uiButtonOpacity()));
+        onClose(nullptr);
+        if (auto* popup = VETERPopup::create()) popup->show();
+    }
 
     void onToggleNoClip(CCObject*) {
         toggleNoClip();
@@ -3058,5 +3153,5 @@ $on_mod(Loaded) {
     applySpeedhack();
     if (musicMuted()) applyMusicMute();
     applyMusicPitch();
-    log::info("VETER v1.2.8 loaded: responsive QOL-style UI, draggable image launcher, PlayerObject input recording, autosave, persistent Speedhack/audio sync, FPS and visual tools");
+    log::info("VETER v1.3.0 loaded: responsive dark-navy UI, button size/menu size/button opacity controls, draggable image launcher, PlayerObject input recording, autosave, persistent Speedhack/audio sync, FPS and visual tools");
 }
