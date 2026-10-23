@@ -1292,7 +1292,7 @@ protected:
         const auto size = m_mainLayer->getContentSize();
 
         // Base and content panels.
-        auto* darkPanel = CCLayerColor::create(ccc4(9, 13, 24, 250), size.width, size.height);
+        auto* darkPanel = CCLayerColor::create(ccc4(20, 27, 41, 252), size.width, size.height);
         if (darkPanel) m_mainLayer->addChild(darkPanel, -5);
         auto* contentPanel = CCLayerColor::create(ccc4(13, 18, 31, 246), size.width - 104.f, size.height - 44.f);
         if (contentPanel) {
@@ -1347,7 +1347,7 @@ protected:
                              float x, float y, const char* frame, float fontScale = 0.27f) -> CCLabelBMFont* {
             if (!menu) return nullptr;
             (void)frame; // Retained in the call signature so existing feature definitions stay readable.
-            constexpr float cardWidth = 104.f;
+            constexpr float cardWidth = 88.f;
             constexpr float cardHeight = 26.f;
             auto* card = CCLayerColor::create(ccc4(20, 27, 41, 252), cardWidth, cardHeight);
             if (!card) return nullptr;
@@ -1366,7 +1366,7 @@ protected:
             auto* label = CCLabelBMFont::create(text.c_str(), "bigFont.fnt");
             if (!label) return nullptr;
             const float naturalWidth = label->getContentSize().width;
-            const float fittedScale = naturalWidth > 0.f ? std::min(fontScale, 94.f / naturalWidth) : fontScale;
+            const float fittedScale = naturalWidth > 0.f ? std::min(fontScale, 80.f / naturalWidth) : fontScale;
             label->setScale(fittedScale);
             label->setColor(ccc3(222, 235, 247));
             label->setAnchorPoint({0.5f, 0.5f});
@@ -1419,8 +1419,8 @@ protected:
 
         // Main controls are aligned to the right of the category rail.
         const float left = 148.f;
-        const float center = 257.f;
-        const float right = 366.f;
+        const float center = 252.f;
+        const float right = 356.f;
         const float top = size.height - 91.f;
 
         // PLAYER tab: gameplay switches and speed controls.
@@ -1479,8 +1479,8 @@ protected:
 
         // SETTINGS tab: compact rows; all original actions are retained.
         auto* settings = makeMenu(3);
-        const float setTop = size.height - 91.f;
-        const float setGap = 28.5f;
+        const float setTop = size.height - 80.f;
+        const float setGap = 25.f;
         auto setRow = [&](int i) { return setTop - setGap * static_cast<float>(i); };
         const float small = 0.215f;
         m_fpsEnabledSprite = addButton(settings, fpsBypassEnabled() ? "FPS ON" : "FPS OFF", menu_selector(VETERPopup::onSetFPS), left, setRow(0), fpsBypassEnabled() ? "GJ_button_02.png" : "GJ_button_04.png", small);
@@ -2593,12 +2593,30 @@ namespace {
 
         auto* menu = CCMenu::create();
         auto* delegate = VETEROpenDelegate::create();
-        // Use a clear text button rather than a tiny icon: on some Android
-        // resolutions the icon was nearly invisible / looked like an arrow.
-        CCNode* buttonVisual = ButtonSprite::create(
-            "VETER", "bigFont.fnt", "GJ_button_01.png", 0.65f
-        );
+        // Compact image-only launcher button. The square background matches
+        // the flat feature cards used inside the VETER popup.
+        auto* buttonVisual = CCLayerColor::create(ccc4(20, 27, 41, 252), 46.f, 46.f);
         if (!menu || !delegate || !buttonVisual) return;
+        auto* stripe = CCLayerColor::create(ccc4(38, 211, 228, 255), 2.f, 46.f);
+        if (stripe) buttonVisual->addChild(stripe, 1);
+        auto* icon = CCSprite::create("veter-button.png");
+        if (icon) {
+            icon->setPosition({23.f, 23.f});
+            const auto iconSize = icon->getContentSize();
+            if (iconSize.width > 0.f && iconSize.height > 0.f) {
+                icon->setScale(std::min(36.f / iconSize.width, 36.f / iconSize.height));
+            }
+            buttonVisual->addChild(icon, 2);
+        } else {
+            // Visible fallback if a resource fails to load.
+            auto* fallback = CCLabelBMFont::create("V", "bigFont.fnt");
+            if (fallback) {
+                fallback->setScale(0.65f);
+                fallback->setPosition({23.f, 23.f});
+                fallback->setColor(ccc3(90, 242, 248));
+                buttonVisual->addChild(fallback, 2);
+            }
+        }
 
         auto* item = CCMenuItemSpriteExtra::create(
             buttonVisual, delegate, menu_selector(VETEROpenDelegate::onOpen)
@@ -2608,8 +2626,8 @@ namespace {
         const auto size = CCDirector::sharedDirector()->getWinSize();
         menu->setTag(kVETERButtonTag);
         menu->setPosition({0.f, 0.f});
-        item->setPosition({size.width - 76.f, size.height - 76.f});
-        item->setScale(0.90f);
+        item->setPosition({size.width - 34.f, size.height - 34.f});
+        item->setScale(0.88f);
         menu->addChild(delegate);
         menu->addChild(item);
         scene->addChild(menu, 9999);
@@ -2950,5 +2968,5 @@ $on_mod(Loaded) {
     applySpeedhack();
     if (musicMuted()) applyMusicMute();
     applyMusicPitch();
-    log::info("VETER v1.2.5 loaded: PlayerObject input recording, autosave, persistent Speedhack/audio sync, FPS and visual tools");
+    log::info("VETER v1.2.7 loaded: compact QOL-style UI, image launcher, PlayerObject input recording, autosave, persistent Speedhack/audio sync, FPS and visual tools");
 }
