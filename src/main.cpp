@@ -1212,7 +1212,7 @@ private:
                 m_tabSprites[i]->setColor(active ? ccc3(90, 242, 248) : ccc3(204, 216, 232));
             }
             if (m_tabCards[i]) {
-                m_tabCards[i]->setColor(active ? ccc3(22, 73, 87) : ccc3(19, 26, 40));
+                m_tabCards[i]->setColor(active ? ccc3(13, 65, 94) : ccc3(10, 22, 48));
                 m_tabCards[i]->setOpacity(active ? 255 : 215);
             }
         }
@@ -1288,31 +1288,40 @@ protected:
         // derive every column/row from its actual content size. This prevents
         // controls extending past the popup on smaller Android displays.
         const auto screenSize = CCDirector::sharedDirector()->getWinSize();
-        const float popupWidth = std::max(260.f, std::min(420.f, screenSize.width - 24.f));
-        const float popupHeight = std::max(190.f, std::min(320.f, screenSize.height - 20.f));
+        const float popupWidth = std::max(220.f, std::min(420.f, screenSize.width - 24.f));
+        const float popupHeight = std::max(180.f, std::min(320.f, screenSize.height - 20.f));
         if (!Popup::init(popupWidth, popupHeight)) return false;
+
+        // Recolor the actual stock Popup background as well as the content: the
+        // default GJ_square texture is warm brown and remains visible around panels.
+        if (m_bgSprite) {
+            m_bgSprite->setColor(ccc3(40, 76, 150));
+            m_bgSprite->setOpacity(255);
+        }
         setTitle("VETER");
+        if (m_title) m_title->setColor(ccc3(111, 224, 255));
 
         if (!m_mainLayer) return false;
         const auto size = m_mainLayer->getContentSize();
-        const float railWidth = std::min(78.f, size.width * 0.19f);
-        const float contentLeft = railWidth + 20.f;
-        const float contentRight = size.width - 9.f;
-        const float contentWidth = std::max(120.f, contentRight - contentLeft);
+        const float railWidth = std::clamp(size.width * 0.17f, 45.f, 70.f);
+        // Narrow the left rail and reduce the gutter to shift all content left.
+        const float contentLeft = railWidth + 14.f;
+        const float contentRight = size.width - 12.f;
+        const float contentWidth = std::max(64.f, contentRight - contentLeft);
         const float cellWidth = contentWidth / 3.f;
-        const float cardWidth = std::clamp(cellWidth - 8.f, 62.f, 88.f);
-        const float cardHeight = std::clamp(size.height * 0.082f, 20.f, 26.f);
+        const float cardWidth = std::max(30.f, std::min(86.f, cellWidth - 6.f));
+        const float cardHeight = std::clamp(size.height * 0.075f, 16.f, 24.f);
 
-        // Base and content panels follow the responsive columns and height.
-        auto* darkPanel = CCLayerColor::create(ccc4(20, 27, 41, 252), size.width, size.height);
+        // Use opaque blue-toned panels so the brown stock texture cannot shine through.
+        auto* darkPanel = CCLayerColor::create(ccc4(8, 17, 42, 255), size.width, size.height);
         if (darkPanel) m_mainLayer->addChild(darkPanel, -5);
         auto* contentPanel = CCLayerColor::create(
-            ccc4(13, 18, 31, 246), std::max(100.f, size.width - contentLeft - 8.f), size.height - 20.f);
+            ccc4(10, 22, 50, 255), std::max(64.f, size.width - contentLeft - 8.f), size.height - 20.f);
         if (contentPanel) {
-            contentPanel->setPosition({contentLeft - 4.f, 8.f});
+            contentPanel->setPosition({contentLeft - 3.f, 8.f});
             m_mainLayer->addChild(contentPanel, -4);
         }
-        auto* sidePanel = CCLayerColor::create(ccc4(10, 15, 27, 250), railWidth, size.height - 20.f);
+        auto* sidePanel = CCLayerColor::create(ccc4(5, 12, 31, 255), railWidth, size.height - 20.f);
         if (sidePanel) {
             sidePanel->setPosition({8.f, 8.f});
             m_mainLayer->addChild(sidePanel, -4);
@@ -1327,7 +1336,7 @@ protected:
             accent->setPosition({contentLeft, size.height - 35.f});
             m_mainLayer->addChild(accent, -3);
         }
-        auto* lowerAccent = CCLayerColor::create(ccc4(24, 45, 62, 255), std::max(100.f, size.width - contentLeft - 16.f), 1.f);
+        auto* lowerAccent = CCLayerColor::create(ccc4(18, 39, 75, 255), std::max(100.f, size.width - contentLeft - 16.f), 1.f);
         if (lowerAccent) {
             lowerAccent->setPosition({contentLeft, 12.f});
             m_mainLayer->addChild(lowerAccent, -3);
@@ -1360,7 +1369,7 @@ protected:
                              float x, float y, const char* frame, float fontScale = 0.27f) -> CCLabelBMFont* {
             if (!menu) return nullptr;
             (void)frame; // Retained in the call signature so existing feature definitions stay readable.
-            auto* card = CCLayerColor::create(ccc4(20, 27, 41, 252), cardWidth, cardHeight);
+            auto* card = CCLayerColor::create(ccc4(13, 27, 57, 255), cardWidth, cardHeight);
             if (!card) return nullptr;
             card->setAnchorPoint({0.5f, 0.5f});
 
@@ -1369,7 +1378,7 @@ protected:
                 stripe->setPosition({0.f, 0.f});
                 card->addChild(stripe, 1);
             }
-            auto* bottomLine = CCLayerColor::create(ccc4(35, 52, 72, 255), cardWidth - 2.f, 1.f);
+            auto* bottomLine = CCLayerColor::create(ccc4(23, 43, 79, 255), cardWidth - 2.f, 1.f);
             if (bottomLine) {
                 bottomLine->setPosition({2.f, 0.f});
                 card->addChild(bottomLine, 1);
@@ -1396,9 +1405,9 @@ protected:
         nav->setPosition({0.f, 0.f});
         m_mainLayer->addChild(nav, 5);
         auto tabButton = [&](int idx, const char* label, SEL_MenuHandler selector, float y) {
-            const float tabWidth = std::max(52.f, railWidth - 5.f);
-            const float tabHeight = std::clamp(size.height * 0.094f, 22.f, 30.f);
-            auto* card = CCLayerColor::create(ccc4(19, 26, 40, 225), tabWidth, tabHeight);
+            const float tabWidth = std::max(38.f, railWidth - 10.f);
+            const float tabHeight = std::clamp(size.height * 0.085f, 18.f, 27.f);
+            auto* card = CCLayerColor::create(ccc4(10, 22, 48, 255), tabWidth, tabHeight);
             if (!card) return;
             card->setAnchorPoint({0.5f, 0.5f});
             auto* stripe = CCLayerColor::create(ccc4(38, 211, 228, 255), 2.f, tabHeight);
@@ -1408,22 +1417,22 @@ protected:
             }
             auto* textLabel = CCLabelBMFont::create(label, "bigFont.fnt");
             if (!textLabel) return;
-            float scale = 0.20f;
+            float scale = 0.18f;
             if (textLabel->getContentSize().width > 0.f)
-                scale = std::min(scale, (tabWidth - 8.f) / textLabel->getContentSize().width);
+                scale = std::min(scale, std::max(0.09f, (tabWidth - 6.f) / textLabel->getContentSize().width));
             textLabel->setScale(scale);
             textLabel->setColor(ccc3(204, 216, 232));
             textLabel->setAnchorPoint({0.5f, 0.5f});
-            textLabel->setPosition({tabWidth * 0.53f, tabHeight * 0.5f});
+            textLabel->setPosition({tabWidth * 0.50f, tabHeight * 0.5f});
             card->addChild(textLabel, 2);
             auto* item = CCMenuItemSpriteExtra::create(card, this, selector);
             if (!item) return;
-            item->setPosition({8.f + railWidth * 0.5f, y});
+            item->setPosition({4.f + railWidth * 0.5f, y});
             nav->addChild(item);
             m_tabCards[idx] = card;
             m_tabSprites[idx] = textLabel;
         };
-        const float tabTop = size.height - (size.height < 260.f ? 48.f : 68.f);
+        const float tabTop = size.height - (size.height < 260.f ? 45.f : 64.f);
         const float tabGap = std::min(44.f, std::max(28.f, (size.height - 94.f) / 3.f));
         tabButton(0, "PLAYER", menu_selector(VETERPopup::onTabPlayer), tabTop);
         tabButton(1, "GD BOT", menu_selector(VETERPopup::onTabBot), tabTop - tabGap);
@@ -2722,16 +2731,9 @@ namespace {
     }
 }
 
-// Attach directly to the main-menu layer as soon as it is initialized. This
-// avoids relying exclusively on CCDirector::drawScene, which may be too late
-// or inconsistent on some Android builds.
-class $modify(VETERMenuLayer, MenuLayer) {
-    bool init() {
-        if (!MenuLayer::init()) return false;
-        attachVETERButton(this);
-        return true;
-    }
-};
+// The launcher is attached only to the running scene by VETERDirector below.
+// Do not also attach it to MenuLayer: that created two overlapping icons and
+// both touch delegates competed for the same drag gesture.
 
 // Local-only unlock-status overrides. These do not add currency or alter server data.
 class $modify(VETERGameStats, GameStatsManager) {
