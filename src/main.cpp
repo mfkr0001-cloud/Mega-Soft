@@ -46,6 +46,22 @@ namespace {
         if (auto* toggleOff = parent->getChildByTag(kVETERToggleOffTag)) toggleOff->setVisible(isOff);
     }
 
+    void setVETERControlLabel(ButtonSprite* button, const std::string& value) {
+        if (!button) return;
+        if (auto* label = typeinfo_cast<CCLabelBMFont*>(button->getChildByID("button-label"))) {
+            setVETERControlLabel(label, value);
+            return;
+        }
+        if (auto* children = button->getChildren()) {
+            for (unsigned int i = 0; i < children->count(); ++i) {
+                if (auto* label = typeinfo_cast<CCLabelBMFont*>(children->objectAtIndex(i))) {
+                    setVETERControlLabel(label, value);
+                    return;
+                }
+            }
+        }
+    }
+
     // User-adjustable UI preferences. They are saved across launches.
     float uiButtonScale() {
         return std::clamp(Mod::get()->getSavedValue<float>("ui-button-scale", 1.0f), 0.70f, 1.0f);
