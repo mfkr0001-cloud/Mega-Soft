@@ -27,6 +27,10 @@
 using namespace geode::prelude;
 
 namespace {
+
+    cocos2d::CCLayerColor* createVETERLayerColor(cocos2d::ccColor3B color, float width, float height) {
+        return cocos2d::CCLayerColor::create(cocos2d::ccc4(color.r, color.g, color.b, 255), width, height);
+    }
     constexpr int kVETERButtonTag = 0x4D534831;
     constexpr int kVETERToggleOnTag = 0x564F4E31;
     constexpr int kVETERToggleOffTag = 0x564F4646;
@@ -44,22 +48,6 @@ namespace {
         const bool isOff = text.size() >= 4 && text.ends_with(" OFF");
         if (auto* toggleOn = parent->getChildByTag(kVETERToggleOnTag)) toggleOn->setVisible(isOn);
         if (auto* toggleOff = parent->getChildByTag(kVETERToggleOffTag)) toggleOff->setVisible(isOff);
-    }
-
-    void setVETERControlLabel(ButtonSprite* button, const std::string& value) {
-        if (!button) return;
-        if (auto* label = typeinfo_cast<CCLabelBMFont*>(button->getChildByID("button-label"))) {
-            setVETERControlLabel(label, value);
-            return;
-        }
-        if (auto* children = button->getChildren()) {
-            for (unsigned int i = 0; i < children->count(); ++i) {
-                if (auto* label = typeinfo_cast<CCLabelBMFont*>(children->objectAtIndex(i))) {
-                    setVETERControlLabel(label, value);
-                    return;
-                }
-            }
-        }
     }
 
     // User-adjustable UI preferences. They are saved across launches.
@@ -1229,11 +1217,11 @@ namespace {
 void applyVETERSecondaryPopupTheme(CCNode* mainLayer) {
     if (!mainLayer) return;
     const auto size = mainLayer->getContentSize();
-    auto* panel = CCLayerColor::create(VETERTheme::secondaryPopup(), size.width, size.height);
+    auto* panel = createVETERLayerColor(VETERTheme::secondaryPopup(), size.width, size.height);
     if (panel) mainLayer->addChild(panel, -5);
-    auto* top = CCLayerColor::create(VETERTheme::accent(), size.width - 2.f, 2.f);
+    auto* top = createVETERLayerColor(VETERTheme::accent(), size.width - 2.f, 2.f);
     if (top) { top->setPosition({1.f, size.height - 3.f}); mainLayer->addChild(top, -4); }
-    auto* bottom = CCLayerColor::create(VETERTheme::columnAccent(), size.width - 2.f, 1.f);
+    auto* bottom = createVETERLayerColor(VETERTheme::columnAccent(), size.width - 2.f, 1.f);
     if (bottom) { bottom->setPosition({1.f, 2.f}); mainLayer->addChild(bottom, -4); }
 }
 
@@ -1438,7 +1426,7 @@ protected:
         const GLubyte buttonAlpha = static_cast<GLubyte>((uiButtonOpacity() * 255) / 100);
 
         // Use opaque purple-toned panels so the stock texture cannot shine through.
-        auto* darkPanel = CCLayerColor::create(VETERTheme::outerPanel(), size.width, size.height);
+        auto* darkPanel = createVETERLayerColor(VETERTheme::outerPanel(), size.width, size.height);
         if (darkPanel) m_mainLayer->addChild(darkPanel, -5);
         auto* contentPanel = CCLayerColor::create(
             VETERTheme::contentPanel(), std::max(64.f, size.width - contentLeft - 8.f), size.height - 20.f);
@@ -1446,7 +1434,7 @@ protected:
             contentPanel->setPosition({contentLeft - 3.f, 8.f});
             m_mainLayer->addChild(contentPanel, -4);
         }
-        auto* sidePanel = CCLayerColor::create(VETERTheme::sidePanel(), railWidth, size.height - 20.f);
+        auto* sidePanel = createVETERLayerColor(VETERTheme::sidePanel(), railWidth, size.height - 20.f);
         if (sidePanel) {
             sidePanel->setPosition({8.f, 8.f});
             m_mainLayer->addChild(sidePanel, -4);
@@ -1456,27 +1444,27 @@ protected:
         const float columnHeight = std::max(42.f, size.height - 66.f);
         const float columnWidth = std::max(20.f, cellWidth - 8.f);
         for (int i = 0; i < 3; ++i) {
-            auto* frame = CCLayerColor::create(VETERTheme::columnBorder(), columnWidth, columnHeight);
+            auto* frame = createVETERLayerColor(VETERTheme::columnBorder(), columnWidth, columnHeight);
             if (!frame) continue;
             frame->setPosition({contentLeft + static_cast<float>(i) * cellWidth + 4.f, 12.f});
-            auto* fill = CCLayerColor::create(VETERTheme::columnFill(), columnWidth - 2.f, columnHeight - 2.f);
+            auto* fill = createVETERLayerColor(VETERTheme::columnFill(), columnWidth - 2.f, columnHeight - 2.f);
             if (fill) { fill->setPosition({1.f, 1.f}); frame->addChild(fill, 1); }
-            auto* cap = CCLayerColor::create(VETERTheme::columnAccent(), columnWidth - 2.f, 3.f);
+            auto* cap = createVETERLayerColor(VETERTheme::columnAccent(), columnWidth - 2.f, 3.f);
             if (cap) { cap->setPosition({1.f, columnHeight - 4.f}); frame->addChild(cap, 2); }
             m_mainLayer->addChild(frame, -3);
         }
 
-        auto* divider = CCLayerColor::create(VETERTheme::accent(), 2.f, size.height - 28.f);
+        auto* divider = createVETERLayerColor(VETERTheme::accent(), 2.f, size.height - 28.f);
         if (divider) {
             divider->setPosition({contentLeft - 8.f, 10.f});
             m_mainLayer->addChild(divider, -3);
         }
-        auto* accent = CCLayerColor::create(VETERTheme::accent(), std::max(100.f, size.width - contentLeft - 16.f), 2.f);
+        auto* accent = createVETERLayerColor(VETERTheme::accent(), std::max(100.f, size.width - contentLeft - 16.f), 2.f);
         if (accent) {
             accent->setPosition({contentLeft, size.height - 35.f});
             m_mainLayer->addChild(accent, -3);
         }
-        auto* lowerAccent = CCLayerColor::create(VETERTheme::accentMuted(), std::max(100.f, size.width - contentLeft - 16.f), 1.f);
+        auto* lowerAccent = createVETERLayerColor(VETERTheme::accentMuted(), std::max(100.f, size.width - contentLeft - 16.f), 1.f);
         if (lowerAccent) {
             lowerAccent->setPosition({contentLeft, 12.f});
             m_mainLayer->addChild(lowerAccent, -3);
@@ -2870,7 +2858,7 @@ public:
         m_buttonVisual = CCLayerColor::create(ccc4(47, 13, 80, 252), 46.f, 46.f);
         if (!m_buttonVisual) return false;
         m_buttonVisual->setAnchorPoint({0.5f, 0.5f});
-        auto* stripe = CCLayerColor::create(VETERTheme::accent(), 2.f, 46.f);
+        auto* stripe = createVETERLayerColor(VETERTheme::accent(), 2.f, 46.f);
         if (stripe) m_buttonVisual->addChild(stripe, 1);
 
         // Load the launcher icon from VETER's packaged sprite resources.
